@@ -1,8 +1,10 @@
 package docs
 
 import (
+	"cmp"
 	"encoding/json"
 	"math/big"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -85,15 +87,14 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		default:
 			w.AllOf = openapi3.SchemaRefs{{Ref: base}}
 		}
-		if desc != "" {
-			w.Description = desc
-		}
+		// The doc goes ahead of the note a constraint may have set.
+		w.Description = appendDescription(desc, w.Description)
 		if hasDef {
 			w.Default = def
 		}
 		stampDeprecated(w, f.Decorators)
 		if hasEx {
-			w.Example = ex
+			setExample(w, ex)
 		}
 		ref.Value = w
 		return
@@ -107,7 +108,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 			ref.Value.Description = desc
 		}
 		if ex, ok := semantic.ExampleValue(f, pkg); ok {
-			ref.Value.Example = ex
+			setExample(ref.Value, ex)
 		}
 		if def, ok := semantic.ResolveDefaultValue(f, pkg); ok {
 			ref.Value.Default = def
@@ -129,12 +130,81 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		applyNullable(ref.Value)
 	}
 	if ex, ok := semantic.ExampleValue(f, pkg); ok {
-		ref.Value.Example = ex
+		setExample(ref.Value, ex)
 	}
 	if def, ok := semantic.ResolveDefaultValue(f, pkg); ok {
 		ref.Value.Default = def
 	}
 	applyFieldConstraints(f.Decorators, ref.Value, prim)
+}
+
+// setExample sets v as s's example, null too, which the Example field would
+// leave out.
+func setExample(s *openapi3.Schema, v any) {
+	if v != nil {
+		s.Example = v
+		return
+	}
+	if s.Extensions == nil {
+		s.Extensions = map[string]any{}
+	}
+	s.Extensions["example"] = nil
+}
+
+// paramSchema returns the schema of f's value as a parameter or a header
+// carries it: never null, with f's constraints and default. The parameter
+// holds f's description, deprecation and example: see [docOf].
+func paramSchema(f *ast.Field, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
+	ref := schemaForTypeRef(nonNullType(f), pkg, registry)
+	bare := *f
+	bare.Doc = nil
+	bare.Decorators = slices.DeleteFunc(slices.Clone(f.Decorators), func(d *ast.Decorator) bool {
+		return d != nil && (d.Name == "doc" || d.Name == "deprecated" || d.Name == "example")
+	})
+	applyFieldMetadata(&bare, ref, pkg, false)
+	return ref
+}
+
+// paramDoc is what documents a parameter or a header beside its schema.
+type paramDoc struct {
+	desc, reason string
+	deprecated   bool
+	example      any
+	hasExample   bool
+}
+
+// docOf returns the description, deprecation and example of field f.
+func docOf(f *ast.Field, pkg *semantic.Package) paramDoc {
+	d := paramDoc{
+		desc:       semantic.Description(f.Decorators, f.Doc),
+		reason:     semantic.DeprecatedReason(f.Decorators),
+		deprecated: semantic.IsDeprecated(f.Decorators),
+	}
+	d.example, d.hasExample = semantic.ExampleValue(f, pkg)
+	return d
+}
+
+// merge folds in d, a later field's of one header: the first description,
+// reason and example given stay, and it is deprecated when both are.
+func (m *paramDoc) merge(d paramDoc) {
+	m.desc = cmp.Or(m.desc, d.desc)
+	m.reason = cmp.Or(m.reason, d.reason)
+	m.deprecated = m.deprecated && d.deprecated
+	if !m.hasExample {
+		m.example, m.hasExample = d.example, d.hasExample
+	}
+}
+
+// apply sets d on p, the deprecation's reason after the description.
+func (d paramDoc) apply(p *openapi3.Parameter) {
+	p.Description = d.desc
+	p.Deprecated = d.deprecated
+	if d.deprecated && d.reason != "" {
+		p.Description = appendDescription(p.Description, "Deprecated: "+d.reason)
+	}
+	if d.hasExample {
+		p.Example = d.example
+	}
 }
 
 // fieldConstraintSchema returns a schema of the constraints f, a value of DSL
@@ -247,16 +317,33 @@ func setNumber(s *openapi3.Schema, key string, v *big.Rat) {
 }
 
 // tightenBound sets bound key, `minimum`, `maximum` or an exclusive one, to v
-// unless s holds a tighter one: the validator runs every decorator, so
-// `@gte(10) @range(0, 100)` enforces a minimum of 10.
+// unless s holds a bound on that side as tight, which it otherwise drops: the
+// validator runs every decorator, so `@gte(10) @range(0, 100)` enforces a
+// minimum of 10, and `@gt(0)` on a uint8 an exclusive minimum of 0 rather
+// than the type's minimum 0.
 func tightenBound(s *openapi3.Schema, key string, v *big.Rat) {
-	if cur, ok := schemaNumber(s, key); ok {
-		c := v.Cmp(cur)
-		if key == "minimum" || key == "exclusiveMinimum" {
+	lower := key == "minimum" || key == "exclusiveMinimum"
+	side := [2]string{"maximum", "exclusiveMaximum"}
+	if lower {
+		side = [2]string{"minimum", "exclusiveMinimum"}
+	}
+	for _, held := range side {
+		cur, ok := schemaNumber(s, held)
+		if !ok {
+			continue
+		}
+		c := cur.Cmp(v)
+		if !lower {
 			c = -c
 		}
-		if c >= 0 {
+		if c > 0 || c == 0 && (held == side[1] || key == side[0]) {
 			return
+		}
+	}
+	for _, held := range side {
+		delete(s.Extensions, held)
+		if f := numberField(s, held); f != nil {
+			*f = nil
 		}
 	}
 	setNumber(s, key, v)
@@ -321,10 +408,6 @@ func setMaxLen(s *openapi3.Schema, v uint64) {
 		s.MaxLength = &v
 	}
 }
-
-// lengthKeywordsApply reports whether length keywords fit s: on `format: byte`
-// they would count base64 characters, not the raw bytes the validator counts.
-func lengthKeywordsApply(s *openapi3.Schema) bool { return s.Format != "byte" }
 
 // itemCountKeyword stores an item count through array or object by s's type,
 // matched with Includes so an optional `[array, "null"]` counts as an array.

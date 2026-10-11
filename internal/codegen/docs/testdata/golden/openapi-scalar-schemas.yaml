@@ -39,3 +39,5 @@ paths:
       - S
 servers:
 - url: /v1
+tags:
+- name: S

@@ -46,7 +46,8 @@ func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 }
 
 // GenerateOpenAPI writes the project as one OpenAPI 3.1 document to
-// `output.openapi`, naming a declaration two packages share `<PascalPkg><Name>`.
+// `output.openapi`, naming a declaration whose name or component name two
+// packages share `<PascalPkg><Name>`.
 func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	dest := documentPath(cfg, projectRoot)
 	if dest == "" || !describable(proj) {
@@ -103,13 +104,17 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
 	ops, uses, shared := addPaths(doc, pkg, registry, names)
-	if cfg.OpenAPI.BasePath != "" {
-		doc.Servers = openapi3.Servers{basePathServer(cfg.OpenAPI.BasePath, ops, pkg)}
+	if base := serverPath(cfg.OpenAPI.BasePath); base != "" {
+		doc.Servers = openapi3.Servers{basePathServer(base, ops, pkg)}
 	}
 	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
+	addTags(doc, pkg)
 	if err := dropHiddenOnly(doc, pkg, uses); err != nil {
+		return doc, fmt.Errorf("marshal openapi: %w", err)
+	}
+	if err := dropBodylessRequests(doc, pkg, registry, uses.requestBody); err != nil {
 		return doc, fmt.Errorf("marshal openapi: %w", err)
 	}
 	if len(shared) > 0 {

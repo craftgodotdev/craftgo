@@ -12,6 +12,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -64,6 +65,44 @@ service S {
     }
 }`)
 	expectGolden(t, "openapi-enum-schemas.yaml", body)
+}
+
+// The document lists each tag its operations carry in the order they first
+// appear, a service's doc describing its tag - the first of its @tags, else
+// its @group, else its name - and an enum whose values have docs or are
+// deprecated describes each value in `x-enum-descriptions`.
+func TestServiceAndEnumValueDocsAreDocumented(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+enum Status {
+    // Waiting for payment.
+    Pending
+    Paid   @doc("Paid in full.")
+    Legacy @deprecated("use Paid")
+    Gone   @deprecated
+    Shipped
+}
+enum Plain { A  B }
+type GetOrderReq { id string }
+type Order { id string  status Status  plain Plain }
+
+// Orders placed by customers.
+@tags(orders, sales)
+service OrderService {
+    get GetOrder /orders/{id} { request GetOrderReq  response Order }
+}
+
+// Internal tooling.
+@group("admin/ops")
+service AdminService {
+    @tags(audit)
+    get Audit /audit { response Order }
+}
+
+// Liveness.
+service Health { get Ping /ping { response Order } }
+
+service Untold { get Hello /hello { response Order } }`)
+	expectGolden(t, "openapi-tags-and-enum-docs.yaml", body)
 }
 
 // A scalar becomes a component schema its fields $ref.
@@ -205,8 +244,8 @@ service S {
 	mustContainAll(t, body, `"429":`, "headers:", "Retry-After:")
 	// The header keeps the field's type (int → integer).
 	if i := strings.Index(body, "Retry-After:"); i >= 0 {
-		if !strings.Contains(body[i:min(i+80, len(body))], "type: integer") {
-			t.Errorf("Retry-After header should carry an integer schema:\n%s", body[i:min(i+120, len(body))])
+		if !strings.Contains(body[i:min(i+160, len(body))], "type: integer") {
+			t.Errorf("Retry-After header should carry an integer schema:\n%s", body[i:min(i+160, len(body))])
 		}
 	}
 }
@@ -416,6 +455,47 @@ service S {
 	}
 }
 
+// A HEAD operation's responses, its errors' too, carry headers and no
+// content, and it adds no `<stem>RespBody`.
+func TestHeadResponsesHaveNoContent(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+error NotFound Missing { at string @header("X-At") }
+type Meta {
+	size int @header("X-Size")
+	name string
+}
+type Req { id string }
+service S {
+	@errors(Missing)
+	head Probe /files/{id} { request Req  response Meta }
+	@rawResponse
+	head Raw /raw { }
+}`}, &config.Config{})
+	probe := doc.Paths.Find("/files/{id}").Head.Responses
+	raw := doc.Paths.Find("/raw").Head.Responses
+	for name, c := range map[string]struct {
+		resp   *openapi3.ResponseRef
+		header string
+	}{
+		"Probe 200": {probe.Status(200), "X-Size"},
+		"Probe 404": {probe.Status(404), "X-At"},
+		"Raw 200":   {raw.Status(200), ""},
+	} {
+		if c.resp == nil || c.resp.Value == nil {
+			t.Fatalf("%s is missing", name)
+		}
+		if c.resp.Value.Content != nil {
+			t.Errorf("%s has content %v", name, slices.Sorted(maps.Keys(c.resp.Value.Content)))
+		}
+		if c.header != "" && c.resp.Value.Headers[c.header] == nil {
+			t.Errorf("%s lost its %s header", name, c.header)
+		}
+	}
+	if doc.Components.Schemas["ProbeRespBody"] != nil {
+		t.Error("HEAD Probe adds a ProbeRespBody")
+	}
+}
+
 // Two errors with one status share an `anyOf` response.
 func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
 	src := `package design
@@ -611,6 +691,32 @@ service S { post Create /c { request T  response T } }`
 	if !strings.Contains(src2, `- "null"`) {
 		t.Errorf("expected 3.1 null type entry on @nullable field:\n%s", src2)
 	}
+}
+
+// `@example(null)` documents a null example, whatever field carries it.
+func TestExampleNullIsDocumented(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Inner { x int }
+type T {
+	attrs map<string, int>  @example(null)
+	opt   map<string, int>? @example(null)
+	inner Inner             @example(null)
+	maybe Inner?            @example(null)
+	raw   any               @example(null)
+}
+service S { post M /m { request T  response T } }`}, &config.Config{})
+	props := doc.Components.Schemas["T"].Value.Properties
+	for _, name := range []string{"attrs", "opt", "inner", "maybe", "raw"} {
+		raw, err := json.Marshal(props[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"example":null`) {
+			t.Errorf("%s does not document the null example: %s", name, raw)
+		}
+	}
+	body := generateOpenAPIToString(t, "package design\ntype T { raw any @example(null) }\nservice S { post M /m { request T } }")
+	mustContainAll(t, body, "example: null\n")
 }
 
 // Each validator decorator on a field stamps its OpenAPI keyword.
@@ -1178,6 +1284,48 @@ service S { post P /p { request Wrap<Item> } }`,
 	}
 }
 
+// A request type no documented operation takes a body from - each field
+// bound to the path, the query, a header or a cookie, by decorator or by
+// default - has no component, nor has a mixin of it without a body field or a
+// generic instance it alone refs; one anything else refs stays.
+func TestBodylessRequestTypesHaveNoComponent(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Paging {
+	cursor string? @query
+	limit  int?    @query
+}
+type Trace { trace string? @header("X-Trace") }
+type Filter<T> { by T? @query }
+type ListReq {
+	Paging
+	Filter<string>
+	owner string @path
+}
+type GetReq { id string }
+type DelReq {
+	Trace
+	id string @path
+}
+type MakeReq {
+	Trace
+	name string
+}
+type Holder { req GetReq }
+type Item { id string }
+service S {
+	get List /o/{owner}/items { request ListReq  response Item }
+	get Get /items/{id} { request GetReq  response Holder }
+	delete Del /items/{id} { request DelReq }
+	post Make /items { request MakeReq  response Item }
+	get Tokens /tokens { request Paging  response Item }
+}`}, &config.Config{})
+	got := slices.Sorted(maps.Keys(doc.Components.Schemas))
+	want := []string{"GetReq", "GetRespBody", "Holder", "Item", "ListRespBody", "MakeReq", "MakeReqBody", "MakeRespBody", "TokensRespBody", "Trace"}
+	if !slices.Equal(got, want) {
+		t.Errorf("components = %v, want %v", got, want)
+	}
+}
+
 // A generic instance keeps its declaration's field constraints and
 // description.
 func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {
@@ -1433,6 +1581,121 @@ service S { get List /things { response Resp } }`)
 				}
 			}
 		}
+	}
+}
+
+// A @header("Set-Cookie") field and @cookie fields make one Set-Cookie
+// header: the field's description, then the cookies it sets.
+func TestSetCookieHeaderFieldJoinsTheCookies(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Resp {
+	// Pre-built cookie line from the session store.
+	raw string? @header("set-cookie")
+	sid string? @cookie("sid")
+	tz  string? @cookie("tz")
+	ok  bool
+}
+service S { get G /g { response Resp } }`}, &config.Config{})
+	headers := doc.Paths.Find("/g").Get.Responses.Status(200).Value.Headers
+	if len(headers) != 1 || headers["set-cookie"] == nil {
+		t.Fatalf("want one set-cookie header, got %v", slices.Sorted(maps.Keys(headers)))
+	}
+	h := headers["set-cookie"].Value
+	if want := "Pre-built cookie line from the session store.\n\nSets cookies: sid, tz"; h.Description != want {
+		t.Errorf("description %q, want %q", h.Description, want)
+	}
+	if h.Schema.Value == nil || !h.Schema.Value.Type.Is("string") || h.Required {
+		t.Errorf("want an optional string header, got required=%v schema=%+v", h.Required, h.Schema.Value)
+	}
+}
+
+// A response header is required when every body its status may send sends
+// it whatever the body holds: from a field neither optional nor an array.
+func TestResponseHeadersSentAlwaysAreRequired(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+error TooManyRequests Slow {
+	retryAfter int     @header("Retry-After")
+	limit      int     @header("X-Limit")
+}
+error TooManyRequests Busy {
+	retryAfter int     @header("retry-after")
+	limit      int?    @header("X-Limit")
+}
+error Conflict Taken {
+	owner string @header("X-Owner")
+}
+type Resp {
+	total int      @header("X-Total")
+	etag  string?  @header("ETag")
+	tags  string[] @header("X-Tag")
+	sid   string   @cookie("sid")
+	ok    bool
+}
+type Moved { at string @header("X-At") }
+service S {
+	@errors(Slow, Busy)
+	get G /g { response Resp }
+	@status(409)
+	@errors(Taken)
+	post P /p { response Moved }
+}`}, &config.Config{})
+	required := func(headers openapi3.Headers) map[string]bool {
+		out := map[string]bool{}
+		for name, h := range headers {
+			out[name] = h.Value.Required
+		}
+		return out
+	}
+	g := doc.Paths.Find("/g").Get.Responses
+	p := doc.Paths.Find("/p").Post.Responses
+	for status, c := range map[string]struct {
+		headers openapi3.Headers
+		want    map[string]bool
+	}{
+		"G 200": {g.Status(200).Value.Headers, map[string]bool{"X-Total": true, "ETag": false, "X-Tag": false, "Set-Cookie": true}},
+		"G 429": {g.Status(429).Value.Headers, map[string]bool{"Retry-After": true, "X-Limit": false}},
+		"P 409": {p.Status(409).Value.Headers, map[string]bool{"X-At": false, "X-Owner": false}},
+	} {
+		if got := required(c.headers); !maps.Equal(got, c.want) {
+			t.Errorf("%s required headers = %v, want %v", status, got, c.want)
+		}
+	}
+}
+
+// A parameter carries its field's description, deprecation and example; its
+// schema keeps the type, the constraints and the default.
+func TestParameterDocsSitOnTheParameter(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+enum Sort { asc  desc }
+type Req {
+	// Search text.
+	q     string? @query @maxLength(10) @example("abc")
+	sort  Sort?   @query @doc("Sort order.") @default(asc)
+	trace string? @header("X-Trace") @deprecated("use traceparent")
+}
+type Out { ok bool }
+service S { get L /l { request Req  response Out } }`}, &config.Config{})
+	params := doc.Paths.Find("/l").Get.Parameters
+	q := params.GetByInAndName("query", "q")
+	if q.Description != "Search text." || q.Example != "abc" {
+		t.Errorf("q: description %q, example %v", q.Description, q.Example)
+	}
+	if s := q.Schema.Value; s.Description != "" || s.Example != nil || s.MaxLength == nil || *s.MaxLength != 10 {
+		t.Errorf("q schema: %+v", s)
+	}
+	sort := params.GetByInAndName("query", "sort")
+	if sort.Description != "Sort order." {
+		t.Errorf("sort: description %q", sort.Description)
+	}
+	if s := sort.Schema.Value; s == nil || s.Description != "" || s.Default != "asc" || len(s.AllOf) != 1 {
+		t.Errorf("sort schema: %+v", sort.Schema)
+	}
+	trace := params.GetByInAndName("header", "X-Trace")
+	if !trace.Deprecated || trace.Description != "Deprecated: use traceparent" {
+		t.Errorf("X-Trace: deprecated %v, description %q", trace.Deprecated, trace.Description)
+	}
+	if s := trace.Schema.Value; s.Deprecated || s.Description != "" {
+		t.Errorf("X-Trace schema: %+v", s)
 	}
 }
 
@@ -1766,6 +2029,35 @@ service S {
 	}
 }
 
+// The server URL is the basePath as the routes take it, however the manifest
+// spells it: it and an operation's path join to the route served.
+func TestServerURLIsTheRoutesBasePath(t *testing.T) {
+	for basePath, want := range map[string]string{
+		"/api": "/api", "/api/": "/api", "api": "/api", "//api": "/api", "/api//v2/": "/api/v2", "/": "/", "//": "/",
+	} {
+		root, files := projectFiles(t, map[string]string{"a/a.craftgo": `package a
+type Ok { ok bool }
+@prefix("/v1")
+service S { get Ping /ping { response Ok } }`})
+		proj, _ := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root, BasePath: basePath})
+		doc, err := buildProjectDocument(proj, &config.Config{OpenAPI: config.OpenAPI{BasePath: basePath}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Servers) != 1 {
+			t.Fatalf("basePath %q: servers %v", basePath, doc.Servers)
+		}
+		got := doc.Servers[0].URL
+		if got != want {
+			t.Errorf("basePath %q: server URL %q, want %q", basePath, got, want)
+		}
+		svc := proj.Packages["a"].Services["S"]
+		if served := route.Resolve(basePath, svc.Primary, svc.Methods[0]); strings.TrimSuffix(got, "/")+"/v1/ping" != served {
+			t.Errorf("basePath %q: server URL %q and path /v1/ping do not join to the route %s", basePath, got, served)
+		}
+	}
+}
+
 // declaredSchemes names every scheme cfg declares, as a design whose
 // `@security` uses each would.
 func declaredSchemes(cfg *config.Config) map[string]bool {
@@ -1946,11 +2238,11 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"delete:",
 		"operationId: GetUser",
 		"#/components/schemas/User",
-		// A type binding only parameters still gets a component.
-		"GetUserReq:",
 		"components:",
 		"schemas:",
 	)
+	// A request type binding only parameters gets no component.
+	mustContainNone(t, src, "GetUserReq:")
 	// No path key starts with the basePath.
 	if strings.Contains(src, "/v1/api/v1/users/{id}") {
 		t.Errorf("path key still has duplicated basePath:\n%s", src)
@@ -2587,6 +2879,123 @@ service S { post M /m { request Limits  response Limits } }`)
 	mustContainNone(t, body, "e+18", "e+19", "9223372036854776000", "maxLength: 9223372036854775808")
 }
 
+// boundKeywords returns the numeric bounds of ref, each as the JSON number
+// the document writes.
+func boundKeywords(t *testing.T, ref *openapi3.SchemaRef) map[string]string {
+	t.Helper()
+	raw, err := json.Marshal(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var all map[string]any
+	if err := dec.Decode(&all); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, kw := range []string{"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"} {
+		if n, ok := all[kw].(json.Number); ok {
+			out[kw] = string(n)
+		}
+	}
+	return out
+}
+
+// An integer type narrower than 64 bits or unsigned carries the range of its
+// Go type, and a float32 the values that parse into one; a bound the design
+// puts on a side replaces the type's there. int, int64 and float64 carry none.
+func TestSizedNumbersCarryTheirRange(t *testing.T) {
+	const f32 = "340282356779733661637539395458142568448"
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar Level int8 @gte(0)
+type R {
+	i8  int8
+	i16 int16
+	i32 int32
+	u8  uint8
+	u16 uint16
+	u32 uint32
+	u64 uint64
+	u   uint
+	g   uint8 @gt(0)
+	r   int16 @range(-10, 10)
+	f   float32
+	fl  float32 @lte(1.5)
+	q   int8[]
+	i   int
+	i64 int64
+	f64 float64
+}
+type Req { id uint16  lv Level @query }
+service S { get M /m/{id} { request Req  response R } }`}, &config.Config{})
+	props := doc.Components.Schemas["R"].Value.Properties
+	op := doc.Paths.Find("/m/{id}").Get
+	for name, c := range map[string]struct {
+		schema *openapi3.SchemaRef
+		want   map[string]string
+	}{
+		"i8":    {props["i8"], map[string]string{"minimum": "-128", "maximum": "127"}},
+		"i16":   {props["i16"], map[string]string{"minimum": "-32768", "maximum": "32767"}},
+		"i32":   {props["i32"], map[string]string{"minimum": "-2147483648", "maximum": "2147483647"}},
+		"u8":    {props["u8"], map[string]string{"minimum": "0", "maximum": "255"}},
+		"u16":   {props["u16"], map[string]string{"minimum": "0", "maximum": "65535"}},
+		"u32":   {props["u32"], map[string]string{"minimum": "0", "maximum": "4294967295"}},
+		"u64":   {props["u64"], map[string]string{"minimum": "0", "maximum": "18446744073709551615"}},
+		"u":     {props["u"], map[string]string{"minimum": "0", "maximum": "18446744073709551615"}},
+		"g":     {props["g"], map[string]string{"exclusiveMinimum": "0", "maximum": "255"}},
+		"r":     {props["r"], map[string]string{"minimum": "-10", "maximum": "10"}},
+		"f":     {props["f"], map[string]string{"exclusiveMinimum": "-" + f32, "exclusiveMaximum": f32}},
+		"fl":    {props["fl"], map[string]string{"exclusiveMinimum": "-" + f32, "maximum": "1.5"}},
+		"q":     {props["q"].Value.Items, map[string]string{"minimum": "-128", "maximum": "127"}},
+		"i":     {props["i"], map[string]string{}},
+		"i64":   {props["i64"], map[string]string{}},
+		"f64":   {props["f64"], map[string]string{}},
+		"Level": {doc.Components.Schemas["Level"], map[string]string{"minimum": "0", "maximum": "127"}},
+		"id":    {op.Parameters.GetByInAndName("path", "id").Schema, map[string]string{"minimum": "0", "maximum": "65535"}},
+	} {
+		if got := boundKeywords(t, c.schema); !maps.Equal(got, c.want) {
+			t.Errorf("%s bounds = %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// A map keyed by an integer, or by a scalar over one, names its keys by the
+// decimal digits the decoder parses, unsigned ones without a sign; an enum
+// key keeps its values and a string key is unconstrained.
+func TestIntegerMapKeysAreDecimal(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar Slot int8 @gte(0)
+scalar Port uint16
+enum Tier { Bronze = 1  Silver = 2 }
+type R {
+	a map<int, string>
+	b map<uint8, string>
+	c map<Slot, string>
+	d map<Port, string>
+	e map<Tier, string>
+	f map<string, string>
+}
+service S { post M /m { request R  response R } }`}, &config.Config{})
+	props := doc.Components.Schemas["R"].Value.Properties
+	for field, want := range map[string]string{
+		"a": `{"pattern":"^[+-]?[0-9]+$","type":"string"}`,
+		"b": `{"pattern":"^[0-9]+$","type":"string"}`,
+		"c": `{"pattern":"^[+-]?[0-9]+$","type":"string"}`,
+		"d": `{"pattern":"^[0-9]+$","type":"string"}`,
+		"e": `{"enum":["1","2"],"type":"string"}`,
+		"f": `null`,
+	} {
+		raw, err := json.Marshal(props[field].Value.Extensions["propertyNames"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != want {
+			t.Errorf("%s propertyNames = %s, want %s", field, raw, want)
+		}
+	}
+}
+
 // A float bound judges the literal and the float the validator compares
 // against as the validator does; an integer field keeps the literal.
 func TestFloatBoundsAgreeWithTheValidator(t *testing.T) {
@@ -2833,7 +3242,7 @@ service S {
 }
 
 // A `bytes @format(raw)` field has an untyped schema with only the raw note;
-// `any` is untyped without it, and plain `bytes` stays `format: byte`.
+// `any` is untyped without it, and plain `bytes` is base64 text.
 func TestGenerateOpenAPIRawBytesIsUnconstrained(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Req { payload bytes @format(raw)  meta bytes? @format(raw)  raw any  blob bytes }
@@ -2841,10 +3250,10 @@ service S {
     post Make /m { request Req }
 }`)
 	for _, want := range []string{
-		"payload:\n          description: raw encoded value",
-		"meta:\n          description: raw encoded value",
+		"payload:\n          description: raw encoded value\n",
+		"meta:\n          description: raw encoded value\n",
 		"raw: {}",
-		"format: byte",
+		"blob:\n          contentEncoding: base64\n          type: string\n",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the document does not carry %q:\n%s", want, body)
@@ -2853,6 +3262,49 @@ service S {
 	// A raw field has no type.
 	if strings.Contains(body, "raw encoded value\n          type:") {
 		t.Errorf("a raw field must not be given a type:\n%s", body)
+	}
+}
+
+// A bytes value is base64 text, and its length, which minLength and
+// maxLength would count in base64 characters, is described in the bytes it
+// decodes to, after its doc.
+func TestBytesLengthIsDescribed(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar Key bytes @length(32)
+scalar Blob bytes @maxLength(64)
+type T {
+	// The payload.
+	a bytes  @length(1, 80)
+	b bytes  @minLength(1)
+	c bytes? @maxLength(1)
+	d bytes  @minLength(2) @maxLength(16)
+	n Blob?  @doc("A narrower blob.") @maxLength(16)
+	e bytes
+}
+service S { post M /m { request T  response T } }`}, &config.Config{})
+	props := doc.Components.Schemas["T"].Value.Properties
+	for name, c := range map[string]struct {
+		schema *openapi3.Schema
+		want   string
+	}{
+		"a":    {props["a"].Value, "The payload.\n\nDecodes to between 1 and 80 bytes."},
+		"b":    {props["b"].Value, "Decodes to at least 1 byte."},
+		"c":    {props["c"].Value, "Decodes to at most 1 byte."},
+		"d":    {props["d"].Value, "Decodes to between 2 and 16 bytes."},
+		"n":    {props["n"].Value, "A narrower blob.\n\nDecodes to at most 16 bytes."},
+		"e":    {props["e"].Value, ""},
+		"Key":  {doc.Components.Schemas["Key"].Value, "Decodes to exactly 32 bytes."},
+		"Blob": {doc.Components.Schemas["Blob"].Value, "Decodes to at most 64 bytes."},
+	} {
+		if c.schema.Description != c.want {
+			t.Errorf("%s description %q, want %q", name, c.schema.Description, c.want)
+		}
+		if c.schema.MinLength != 0 || c.schema.MaxLength != nil {
+			t.Errorf("%s counts base64 characters: minLength %d, maxLength %v", name, c.schema.MinLength, c.schema.MaxLength)
+		}
+		if name != "n" && (c.schema.Format != "" || c.schema.Extensions["contentEncoding"] != "base64") {
+			t.Errorf("%s is not base64 text: format %q, extensions %v", name, c.schema.Format, c.schema.Extensions)
+		}
 	}
 }
 

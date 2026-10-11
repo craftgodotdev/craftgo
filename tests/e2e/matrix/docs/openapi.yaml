@@ -127,23 +127,7 @@ components:
       - tags
       - meta
       type: object
-    AcctDeleteUserReq:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
     AcctEmpty:
-      type: object
-    AcctGetUserReq:
-      description: GetUserReq is the path-bound input for GET /account-users/{id}.
-      properties:
-        id:
-          description: id locates the user.
-          type: string
-      required:
-      - id
       type: object
     AcctPriority:
       enum:
@@ -906,11 +890,6 @@ components:
       - Green
       - Blue
       type: string
-    BindingsPage:
-      description: |-
-        Page embeds as the Go field Page, the name its own `page` field lowers
-        to, so a host reaches that field as `req.Page.Page`.
-      type: object
     BindingsServiceGetItemRespBody:
       $ref: '#/components/schemas/Item'
     BindingsUUID:
@@ -921,23 +900,16 @@ components:
       format: uuid
       type: string
     Blob:
+      contentEncoding: base64
       description: |-
         Blob is a bytes scalar: its Go type holds nil itself, so an optional
         Blob takes no pointer, as a field or as a map value.
-      format: byte
+
+        Decodes to at most 1024 bytes.
       type: string
     BlobInfo:
       properties:
         key:
-          type: string
-      required:
-      - key
-      type: object
-    BlobReq:
-      description: 'BlobReq: key auto-binds to the trailing {key...} variable.'
-      properties:
-        key:
-          minLength: 1
           type: string
       required:
       - key
@@ -997,17 +969,6 @@ components:
       required:
       - v
       - vs
-      type: object
-    CancelJobReq:
-      description: |-
-        CancelJobReq is path-only; pairs with the 204 response. The path
-        param is the canonical ID so logic can look the job up without a
-        body.
-      properties:
-        jobId:
-          $ref: '#/components/schemas/ID'
-      required:
-      - jobId
       type: object
     Catalog:
       description: |-
@@ -1171,11 +1132,6 @@ components:
       description: |-
         CollidingNames holds two fields whose Go names collide: the second
         becomes UserID_2, and the validator and the body writers read both.
-      type: object
-    CollidingQueryReq:
-      description: |-
-        CollidingQueryReq binds two query keys whose Go names collide: SortBy and
-        SortBy_2 each read their own key.
       type: object
     CombineColor:
       description: |-
@@ -1691,6 +1647,8 @@ components:
         w32:
           default: 7
           format: int32
+          maximum: 2147483647
+          minimum: -2147483648
           type:
           - integer
           - "null"
@@ -1702,24 +1660,19 @@ components:
           - "null"
         wf32:
           default: 1.5
+          exclusiveMaximum: 3.4028235677973366e+38
+          exclusiveMinimum: -3.4028235677973366e+38
           format: float
           type:
           - number
           - "null"
         wu16:
           default: 3
+          maximum: 65535
           minimum: 0
           type:
           - integer
           - "null"
-      type: object
-    DeleteAccountReq:
-      description: DeleteAccountReq is path-bound by id; no body.
-      properties:
-        id:
-          $ref: '#/components/schemas/ID'
-      required:
-      - id
       type: object
     DeleteAccountRespBody:
       $ref: '#/components/schemas/ID'
@@ -2159,9 +2112,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/Token'
           - type: "null"
-          minLength: 8
+          description: Decodes to at least 8 bytes.
         raw:
-          format: byte
+          contentEncoding: base64
+          description: Decodes to at least 4 bytes.
           type: string
         rng:
           maxLength: 8
@@ -2261,7 +2215,8 @@ components:
         fields: an explicit null passes, as the null union in OpenAPI says.
       properties:
         blob:
-          format: byte
+          contentEncoding: base64
+          description: Decodes to at least 4 bytes.
           type:
           - string
           - "null"
@@ -2531,6 +2486,9 @@ components:
         byUser:
           additionalProperties:
             $ref: '#/components/schemas/MemberTag'
+          propertyNames:
+            pattern: ^[+-]?[0-9]+$
+            type: string
           type: object
       required:
       - byUser
@@ -2633,6 +2591,8 @@ components:
         w32:
           default: 7
           format: int32
+          maximum: 2147483647
+          minimum: -2147483648
           type:
           - integer
           - "null"
@@ -2644,12 +2604,15 @@ components:
           - "null"
         wf32:
           default: 1.5
+          exclusiveMaximum: 3.4028235677973366e+38
+          exclusiveMinimum: -3.4028235677973366e+38
           format: float
           type:
           - number
           - "null"
         wu16:
           default: 3
+          maximum: 65535
           minimum: 0
           type:
           - integer
@@ -2717,8 +2680,6 @@ components:
           type: string
       required:
       - email
-      type: object
-    EmptyReq:
       type: object
     EmptylistsNode:
       description: Node reaches itself by value through a list and by pointer.
@@ -2970,7 +2931,7 @@ components:
     GetClashRespBody:
       properties:
         blob:
-          format: byte
+          contentEncoding: base64
           type: string
         boxed:
           $ref: '#/components/schemas/BoxOfLeaf'
@@ -3035,12 +2996,6 @@ components:
       $ref: '#/components/schemas/Chain'
     GetItemByPathRespBody:
       $ref: '#/components/schemas/ItemView'
-    GetItemReq:
-      description: |-
-        GetItemReq is the path-only DTO reused by GetItem and DeleteItem.
-        Two operations sharing one DTO is fine - they both want the same
-        "lookup by id" handle.
-      type: object
     GetLostRespBody:
       $ref: '#/components/schemas/XOwner'
     GetNestedRespBody:
@@ -3049,25 +3004,10 @@ components:
       $ref: '#/components/schemas/Leaf'
     GetOptionalWireRespBody:
       $ref: '#/components/schemas/DoneResp'
-    GetOrderReq:
-      description: |-
-        GetOrderReq pins a UUID-typed path parameter. The scalar's
-        @format(uuid) inherits onto the field-level @path binding.
-      type: object
     GetOrderRespBody:
       $ref: '#/components/schemas/ScalarsOrder'
     GetOwnerPairRespBody:
       $ref: '#/components/schemas/XOwnerPairOfString'
-    GetProfileReq:
-      description: |-
-        GetProfileReq carries only the path id; the handler binds it from
-        {id} before calling logic.
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
     GetProfileRespBody:
       $ref: '#/components/schemas/Profile'
     GetQueryFloatRespBody:
@@ -3086,7 +3026,7 @@ components:
     GetShapesRespBody:
       properties:
         blob:
-          format: byte
+          contentEncoding: base64
           type: string
         boxed:
           $ref: '#/components/schemas/BoxOfLeaf'
@@ -3150,7 +3090,7 @@ components:
     GetSharedRespBody:
       properties:
         blob:
-          format: byte
+          contentEncoding: base64
           type: string
         boxed:
           $ref: '#/components/schemas/BoxOfLeaf'
@@ -3217,12 +3157,6 @@ components:
           type: string
       required:
       - id
-      type: object
-    GetUserReq:
-      description: |-
-        GetUserReq is the path-only request for GetUser / DeleteUser. The
-        `id` field is a local `string @path` that replays shared.ID's length
-        cap inline via @length(1, 64).
       type: object
     Grade:
       description: Grade is an int enum whose wire values differ from its member names.
@@ -3334,9 +3268,6 @@ components:
       minLength: 3
       pattern: ^[A-Z]{3}$
       type: string
-    IdsReq:
-      description: IdsReq takes at least two ids from the X-Ids list header.
-      type: object
     InsufficientPermissionsErr:
       description: Forbidden error response (HTTP 403).
       properties:
@@ -3436,17 +3367,13 @@ components:
       required:
       - items
       type: object
-    ItemPath:
-      description: |-
-        ItemPath binds id as an int, uid as an int scalar and kind as a string
-        enum from the path.
-      type: object
     ItemStocked:
       allOf:
       - $ref: '#/components/schemas/InventoryHeader'
       - properties:
           quantity:
             format: int32
+            maximum: 2147483647
             minimum: 0
             type: integer
         required:
@@ -3474,22 +3401,6 @@ components:
           anyOf:
           - $ref: '#/components/schemas/Key'
           - type: "null"
-      type: object
-    KeySetReq:
-      description: KeySetReq names the key set to serve.
-      type: object
-    KeyedOfPriority:
-      allOf:
-      - $ref: '#/components/schemas/KeyMeta'
-      - properties:
-          key:
-            anyOf:
-            - $ref: '#/components/schemas/Priority'
-            - type: "null"
-        type: object
-      description: |-
-        Keyed<Key> spells its type parameter like the Key scalar: the argument
-        binds Keyed's own `key`, while the `code` KeyMeta brings stays a Key.
       type: object
     KeywordFieldNames:
       description: |-
@@ -3555,36 +3466,10 @@ components:
       $ref: '#/components/schemas/ReportCards'
     LedgerEntryListRespBody:
       $ref: '#/components/schemas/LedgerEntryList2RespBody'
-    ListKeyedReq:
-      allOf:
-      - $ref: '#/components/schemas/KeyedOfPriority'
-      - type: object
-      description: |-
-        ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
-        both from the query string.
-      type: object
     ListKeyedRespBody:
       $ref: '#/components/schemas/OrderPage'
     ListOrderGroupsRespBody:
       $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
-    ListOrdersReq:
-      description: |-
-        ListOrdersReq mirrors the canonical cursor-pagination request shape.
-        The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
-        inside @query - codegen parses the wire string as int then casts
-        up to the alias. An absent limit takes its @default, pre-filled
-        before the query binds.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        limit:
-          anyOf:
-          - $ref: '#/components/schemas/Cents'
-          - type: "null"
-          default: 20
-      type: object
     ListOrdersRespBody:
       $ref: '#/components/schemas/OrderPage'
     ListPage:
@@ -3627,21 +3512,6 @@ components:
       $ref: '#/components/schemas/ProjectsResp'
     ListTenantItemsRespBody:
       $ref: '#/components/schemas/TenantItemList'
-    ListUsersReq:
-      allOf:
-      - $ref: '#/components/schemas/Pagination'
-      - properties:
-          query:
-            type:
-            - string
-            - "null"
-        type: object
-      description: |-
-        ListUsersReq embeds `shared.Pagination` cross-package. The
-        implicit mixin form makes the limit / cursor / total fields land
-        at the request root, and the optional `query` slot adds the free-
-        text filter on top.
-      type: object
     ListUsersResp:
       description: |-
         ListUsersResp wraps a page of Users with the canonical pagination
@@ -3854,6 +3724,9 @@ components:
         byUser:
           additionalProperties:
             $ref: '#/components/schemas/MemberTag'
+          propertyNames:
+            pattern: ^[+-]?[0-9]+$
+            type: string
           type: object
       required:
       - byUser
@@ -4208,7 +4081,8 @@ components:
         fields: an explicit null passes, as the null union in OpenAPI says.
       properties:
         blob:
-          format: byte
+          contentEncoding: base64
+          description: Decodes to at least 4 bytes.
           type:
           - string
           - "null"
@@ -4823,6 +4697,7 @@ components:
           format: double
           type: number
         posF32:
+          exclusiveMaximum: 3.4028235677973366e+38
           exclusiveMinimum: 0
           format: float
           type: number
@@ -4889,32 +4764,28 @@ components:
       properties:
         floorUint64:
           description: A floor past 2^53 raises the type's own minimum of 0.
+          maximum: 18446744073709551615
           minimum: 9007199254740993
           type: integer
         gtLtUint:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
-          minimum: 0
           type: integer
         gtLtUint8:
           exclusiveMaximum: 255
           exclusiveMinimum: 0
-          minimum: 0
           type: integer
         gtLtUint16:
           exclusiveMaximum: 65535
           exclusiveMinimum: 0
-          minimum: 0
           type: integer
         gtLtUint32:
           exclusiveMaximum: 4294967295
           exclusiveMinimum: 0
-          minimum: 0
           type: integer
         gtLtUint64:
           exclusiveMaximum: 1000000000000
           exclusiveMinimum: 0
-          minimum: 0
           type: integer
         gteLteUint:
           maximum: 1000
@@ -4937,6 +4808,7 @@ components:
           minimum: 0
           type: integer
         maxUint64:
+          maximum: 18446744073709551615
           minimum: 0
           multipleOf: 18446744073709551615
           type: integer
@@ -4946,7 +4818,7 @@ components:
             unsigned domain makes @negative semantically vacuous (it is
             still accepted at the decorator layer, so we don't test that).
           exclusiveMinimum: 0
-          minimum: 0
+          maximum: 18446744073709551615
           type: integer
         rangeUint:
           description: uint
@@ -4977,6 +4849,7 @@ components:
           description: |-
             A divisor past int64 can only be written as a whole float; the
             validator checks it as that integer, up to the uint64 limit.
+          maximum: 18446744073709551615
           minimum: 0
           multipleOf: 10000000000000000000
           type: integer
@@ -5028,11 +4901,6 @@ components:
           $ref: '#/components/schemas/NumberOptional'
       required:
       - body
-      type: object
-    OptionalWireReq:
-      description: |-
-        OptionalWireReq binds an optional header and an optional enum cookie: each
-        is sent or not, so OpenAPI documents neither as null.
       type: object
     OrderPage:
       description: |-
@@ -5100,17 +4968,6 @@ components:
       required:
       - rows
       type: object
-    PageReq:
-      description: |-
-        PageReq holds a GET request field that carries @json: it auto-binds to
-        the query string as `pageSize`, the name its validation errors carry.
-      properties:
-        page_size:
-          minimum: 1
-          type: integer
-      required:
-      - page_size
-      type: object
     PageSize:
       description: |-
         PageSize is a numeric scalar - every field of this type inherits
@@ -5142,19 +4999,6 @@ components:
         body; the substituted `PageWithAudit<Order>` component lists
         `createdAt` / `updatedAt` (from AuditFields) in addition to its own
         `items` / `total`.
-      type: object
-    PagedReq:
-      allOf:
-      - $ref: '#/components/schemas/BindingsPage'
-      - properties:
-          q:
-            type:
-            - string
-            - "null"
-        type: object
-      description: |-
-        PagedReq binds `page` and `size` from the query string into the Page
-        it embeds.
       type: object
     PagedSearchReq:
       allOf:
@@ -5399,36 +5243,6 @@ components:
           - string
           - "null"
       type: object
-    PairsLookup:
-      allOf:
-      - properties:
-          by_id:
-            type:
-            - string
-            - "null"
-          by_name:
-            type:
-            - string
-            - "null"
-        type: object
-      - anyOf:
-        - properties:
-            by_name:
-              not:
-                type: "null"
-          required:
-          - by_name
-        - properties:
-            by_id:
-              not:
-                type: "null"
-          required:
-          - by_id
-      description: |-
-        PairsLookup is a GET request, so both fields ride the query string: the
-        operation's description names its @requiresOneOf, which each parameter's
-        own schema cannot express.
-      type: object
     PairsNested:
       allOf:
       - $ref: '#/components/schemas/PairsReach'
@@ -5450,7 +5264,6 @@ components:
         each decorator should emit one comparison.
       properties:
         score:
-          exclusiveMinimum: -1
           maximum: 99
           minimum: 0
           multipleOf: 5
@@ -6144,8 +5957,6 @@ components:
       type: object
     PtBlocksRespBody:
       $ref: '#/components/schemas/PtResp'
-    PtReq:
-      type: object
     PtResp:
       properties:
         echo:
@@ -6168,16 +5979,6 @@ components:
       $ref: '#/components/schemas/ScalarsOrder'
     QuarantineRespBody:
       $ref: '#/components/schemas/HealthResp'
-    QueryArrayEnumDefaultReq:
-      description: |-
-        QueryArrayEnumDefaultReq drives the enum-array @query @default path.
-        The slice is pre-filled with the wire values of the default members
-        ([Red, Blue]); the binder must REPLACE that pre-fill when the param
-        is present, not append to it - so `?colors=green` yields ["green"],
-        never ["red", "green", "blue"]. The has-default oracle the binder
-        consults resolves the enum-member array literal so it agrees with the
-        pre-fill that emitted the default.
-      type: object
     QueryArrayIntReq:
       description: |-
         QueryArrayIntReq drives the `[]int @query` shape. Each repeated
@@ -6206,21 +6007,11 @@ components:
         QueryBoolReq is the optional-bool query path: present → `*bool`,
         absent / empty → nil.
       type: object
-    QueryDefaults:
-      description: |-
-        QueryDefaults binds query parameters that take their @default when the
-        request omits them.
-      type: object
     QueryEnumReq:
       description: |-
         QueryEnumReq drives the enum cast path through @query. Enums are
         string-shape on the wire, so optional is fine - the binder reads
         the raw string and casts up to the Color alias.
-      type: object
-    QueryFloatReq:
-      description: |-
-        QueryFloatReq binds a bounded float64 and an unbounded optional float32
-        from the query string; NaN and infinities fail to bind.
       type: object
     QueryIntReq:
       description: |-
@@ -6355,16 +6146,6 @@ components:
       type: object
     ReportListRespBody:
       $ref: '#/components/schemas/ReportCards'
-    RequiredArrayQueryReq:
-      description: |-
-        RequiredArrayQueryReq requires an array query parameter: an absent key
-        answers 400, an empty ?tags= passes.
-      type: object
-    RequiredParamsReq:
-      description: |-
-        RequiredParamsReq holds wire parameters without ? or @default: an absent
-        key answers 400, a present empty value passes.
-      type: object
     ResponseAudit:
       description: ResponseAudit brings the body field HeaderedResp keeps beside its
         header.
@@ -6560,9 +6341,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/Token'
           - type: "null"
-          minLength: 8
+          description: Decodes to at least 8 bytes.
         raw:
-          format: byte
+          contentEncoding: base64
+          description: Decodes to at least 4 bytes.
           type: string
         rng:
           maxLength: 8
@@ -7010,14 +6792,6 @@ components:
       type: object
     SearchProductsRespBody:
       $ref: '#/components/schemas/ProductPage'
-    SearchReq:
-      description: |-
-        SearchReq mixes every supported @query shape in one struct. Note
-        that the optional cursor stays a `string?` (the query binder
-        supports `*string`), but the optional sort uses an enum (string-
-        shape on the wire, so the optional binder works just like for
-        plain strings).
-      type: object
     SearchRespBody:
       $ref: '#/components/schemas/XOwner'
     SearchWithDefaultsRespBody:
@@ -7026,12 +6800,6 @@ components:
       $ref: '#/components/schemas/InventoryListResp'
     SecuredServiceResetRespBody:
       $ref: '#/components/schemas/HealthResp'
-    SensitiveQueryReq:
-      description: |-
-        SensitiveQueryReq keeps @sensitive fields off the wire on a GET: only
-        visible binds from the query string and appears in OpenAPI, and role, which
-        no request sets, is not validated.
-      type: object
     SensitiveRole:
       description: |-
         SensitiveRole has no member at its zero value, so its own Validate refuses
@@ -7062,11 +6830,6 @@ components:
         a mixin reference, not a field) so the createdAt / updatedAt /
         createdBy bookkeeping lands at the wire root without a nested
         envelope.
-      type: object
-    SessionCookieReq:
-      description: |-
-        SessionCookieReq requires a cookie: an absent one answers 400, as the
-        required: true in OpenAPI says.
       type: object
     SessionID:
       minLength: 1
@@ -7115,7 +6878,7 @@ components:
       description: Shapes holds a nil list or map in every position a response can.
       properties:
         blob:
-          format: byte
+          contentEncoding: base64
           type: string
         boxed:
           $ref: '#/components/schemas/BoxOfLeaf'
@@ -7725,17 +7488,6 @@ components:
       - tenant
       - items
       type: object
-    TenantListReq:
-      description: |-
-        TenantListReq: tenantID has no binding decorator. It matches the @prefix
-        {tenantID} segment, so it auto-binds to @path.
-      properties:
-        tenantID:
-          minLength: 1
-          type: string
-      required:
-      - tenantID
-      type: object
     ThrottledErr:
       description: TooManyRequests error response (HTTP 429).
       properties:
@@ -7760,7 +7512,8 @@ components:
       - memberId
       type: object
     Token:
-      format: byte
+      contentEncoding: base64
+      description: Decodes to exactly 16 bytes.
       type: string
     TreeOfScalarsOrder:
       description: |-
@@ -8286,7 +8039,6 @@ components:
         each decorator should emit one comparison.
       properties:
         score:
-          exclusiveMinimum: -1
           maximum: 99
           minimum: 0
           multipleOf: 5
@@ -8455,15 +8207,6 @@ components:
     WireMixin:
       description: WireMixin brings a header and a defaulted query parameter.
       type: object
-    WireRenameReq:
-      description: |-
-        WireRenameReq combines explicit-name bindings in all four parameter
-        locations. Each field's wire name (the decorator argument) differs
-        from its Go field name on purpose so the OpenAPI parameter name and
-        the runtime binder stay provably in lock-step. Header/cookie fields
-        stay non-optional (the binder rejects `string? @header`); the query
-        field is optional to also cover the optional-param wire-name path.
-      type: object
     WrapForeignReqBody:
       $ref: '#/components/schemas/XWrapInBagOfXPayItem'
     WrapForeignRespBody:
@@ -8628,16 +8371,6 @@ components:
         handler must emit the JSON decode (its only body fields come from the
         mixin) and pre-fill the promoted scalar / enum defaults with qualified
         casts (xshared.XSize(20), xshared.XColorGreen).
-      type: object
-    XByKeyReq:
-      allOf:
-      - $ref: '#/components/schemas/XPathKey'
-      - type: object
-      description: |-
-        XByKeyReq draws its only field - the `@path`-bound `key` - from the
-        cross-package mixin xshared.XPathKey. The GetByKey route's `{key}`
-        segment binds through that mixin; the per-package path-param pass can't
-        expand a sibling-package mixin, so the project-level check owns it.
       type: object
     XColor:
       description: |-
@@ -8816,8 +8549,6 @@ components:
       - ofPrim
       - ofMap
       type: object
-    XGetReq:
-      type: object
     XGrand:
       description: |-
         XGrand is a leaf mixin reached only through a CHAIN of mixins: XParent
@@ -8830,6 +8561,8 @@ components:
         g32:
           default: 7
           format: int32
+          maximum: 2147483647
+          minimum: -2147483648
           type:
           - integer
           - "null"
@@ -8896,16 +8629,6 @@ components:
         type: object
       description: Conflict error response (HTTP 409).
       type: object
-    XNestedReq:
-      allOf:
-      - $ref: '#/components/schemas/XParent'
-      - type: object
-      description: |-
-        XNestedReq reaches fields through a mixin nested INSIDE a cross-package
-        mixin: xshared.XParent embeds xshared.XGrand. So `gKey` (@path) and
-        `g32` (@default) live two mixin levels deep - the flattener must
-        qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
-      type: object
     XNodeID:
       description: |-
         XNodeID exercises a numeric cross-package scalar. The cast in
@@ -8971,14 +8694,6 @@ components:
       description: |-
         XParent embeds XGrand (bare) and adds its own default; consumers embed
         XParent to reach both levels.
-      type: object
-    XPathKey:
-      description: |-
-        XPathKey is a cross-package mixin that carries a `@path`-bound field.
-        xrefs embeds it in a request whose route declares `{key}`; the path
-        segment binds through the mixin. The per-package pass can't expand a
-        sibling-package mixin, so the project-level path-param check owns the
-        verdict - the same cross-package flattening the codegen binder does.
       type: object
     XPayItem:
       properties:
@@ -9075,13 +8790,6 @@ components:
       required:
       - label
       type: object
-    XPromoteWire:
-      description: |-
-        XPromoteWire carries a cross-package scalar bound to @query, reached
-        through a mixin: the binder must cast `xshared.XEmail(...)` AND pull in
-        the xshared import, both of which need the promoted field's type
-        re-qualified to its home package.
-      type: object
     XRefsServiceGetItemRespBody:
       $ref: '#/components/schemas/XOwner'
     XRefsServiceListItemsRespBody:
@@ -9118,13 +8826,6 @@ components:
       - flat
       - many
       - stamps
-      type: object
-    XSearchReq:
-      description: |-
-        XSearchReq exercises cross-package scalar binding casts. The /search
-        handler emits qualified casts (`req.Q = xshared.XEmail(r.URL.Query()
-        .Get("q"))`) so the assignment type-checks against the
-        `*xshared.XEmail` field.
       type: object
     XSize:
       description: |-
@@ -9172,14 +8873,6 @@ components:
       required:
       - at
       - slot
-      type: object
-    XThirdReq:
-      description: |-
-        XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by
-        xrefs, and its field reaches a THIRD package (`shared`). The xrefs handler
-        casts `shared.Severity(...)`, so the import collector must resolve the
-        qualified request through the project resolver and pull in `shared` - or
-        the cast compiles to `undefined: shared`.
       type: object
     XTier:
       description: |-
@@ -9238,14 +8931,6 @@ components:
         mixin's fields land via Go field-promotion; the host's Validate
         calls `v.XAudit.Validate()` explicitly since Go method promotion
         doesn't auto-invoke on the host.
-      type: object
-    XWirePromoteReq:
-      allOf:
-      - $ref: '#/components/schemas/XPromoteWire'
-      - type: object
-      description: |-
-        XWirePromoteReq promotes a cross-package scalar bound to @query: the GET
-        handler must cast xshared.XEmail and import xshared.
       type: object
     XWrapInBagOfXLocalItem:
       allOf:
@@ -9418,11 +9103,11 @@ paths:
       description: GetUser returns the user identified by req.ID.
       operationId: AccountUserServiceGetUser
       parameters:
-      - in: path
+      - description: id locates the user.
+        in: path
         name: id
         required: true
         schema:
-          description: id locates the user.
           type: string
       responses:
         "200":
@@ -9830,6 +9515,7 @@ paths:
           description: Conflict
           headers:
             X-Request-Id:
+              required: true
               schema:
                 type: string
       tags:
@@ -9873,10 +9559,10 @@ paths:
           headers:
             ETag:
               deprecated: true
+              description: 'Deprecated: use If-Match'
+              example: v3
+              required: true
               schema:
-                deprecated: true
-                description: 'Deprecated: use If-Match'
-                example: v3
                 type: string
         "403":
           content:
@@ -9886,6 +9572,7 @@ paths:
           description: Forbidden
           headers:
             X-Error-Code:
+              required: true
               schema:
                 type: string
       tags:
@@ -10290,6 +9977,8 @@ paths:
       - in: query
         name: scale
         schema:
+          exclusiveMaximum: 3.4028235677973366e+38
+          exclusiveMinimum: -3.4028235677973366e+38
           format: float
           type: number
       responses:
@@ -11182,6 +10871,7 @@ paths:
           description: Created
           headers:
             ETag:
+              required: true
               schema:
                 type: string
       tags:
@@ -11291,6 +10981,7 @@ paths:
           description: Created
           headers:
             ETag:
+              required: true
               schema:
                 type: string
       tags:
@@ -11486,15 +11177,18 @@ paths:
           headers:
             Set-Cookie:
               description: 'Sets cookies: has_more, session_id'
+              required: true
               schema:
                 type: string
             X-Next-Page:
               schema:
                 type: string
             X-Total-Count:
+              required: true
               schema:
                 type: integer
             X-Trace-Id:
+              required: true
               schema:
                 $ref: '#/components/schemas/ID'
         "429":
@@ -11505,6 +11199,7 @@ paths:
           description: TooManyRequests
           headers:
             Retry-After:
+              required: true
               schema:
                 type: integer
         "503":
@@ -11515,6 +11210,7 @@ paths:
           description: ServiceUnavailable
           headers:
             X-Retry-In:
+              required: true
               schema:
                 type: integer
       tags:
@@ -11738,6 +11434,7 @@ paths:
           description: Created
           headers:
             ETag:
+              required: true
               schema:
                 type: string
       tags:
@@ -11850,6 +11547,7 @@ paths:
           description: OK
           headers:
             X-Rate-Limit:
+              required: true
               schema:
                 type: integer
       tags:
@@ -12304,6 +12002,7 @@ paths:
           description: Created
           headers:
             Location:
+              required: true
               schema:
                 type: string
       tags:
@@ -12649,6 +12348,7 @@ paths:
           description: OK
           headers:
             X-Key:
+              required: true
               schema:
                 $ref: '#/components/schemas/Priority'
       tags:
@@ -12874,6 +12574,7 @@ paths:
           description: OK
           headers:
             X-Tally:
+              required: true
               schema:
                 type: integer
       tags:
@@ -13661,6 +13362,8 @@ paths:
         schema:
           default: 7
           format: int32
+          maximum: 2147483647
+          minimum: -2147483648
           type: integer
       - in: query
         name: p64
@@ -13758,6 +13461,8 @@ paths:
         schema:
           default: 50
           format: int32
+          maximum: 2147483647
+          minimum: -2147483648
           type: integer
       requestBody:
         content:
@@ -13939,9 +13644,11 @@ paths:
           headers:
             Set-Cookie:
               description: 'Sets cookies: xs-session'
+              required: true
               schema:
                 type: string
             X-Trace-Id:
+              required: true
               schema:
                 type: string
       tags:
@@ -14028,3 +13735,136 @@ paths:
       - xshared
 servers:
 - url: /api
+tags:
+- description: |-
+    ProjectService is the minimal list-only surface - no auth, no
+    pagination, just an enveloped Project list so the generator can
+    wire a simple cross-package handler signature.
+  name: ProjectService
+- name: AccountUserService
+- description: |-
+    AccountService is the primary block. It declares the baseline
+    chain that every method gets: rate-limited + tagged "account".
+    Nothing here requires authentication so anonymous endpoints
+    (signup, login) can live in this block directly.
+  name: account
+- description: |-
+    AdminService lives in its own folder (design/admin/); a service
+    defined apart from `api.craftgo` produces the same routes it would
+    inline. The import resolver merges this file into the package, then
+    route gen stitches:
+
+      basePath(/api) + @prefix(/v1/admin) + method-path(/dashboard)
+
+    → `/api/v1/admin/dashboard`. @prefix drives the URL; @group sets where the
+    generated handlers and service stubs land on disk - its value REPLACES the
+    service-name segment, so these emit to internal/transport/admin/ (and the
+    matching service/ tree), not internal/transport/admin-service/ - without
+    touching the route or OpenAPI *path*. Its value also rides along as an
+    OpenAPI tag, so these operations carry [admin, ops] (the group "admin"
+    dedups against the explicit @tags(admin)). The service-level @middlewares
+    wraps every method without the decorator on each one individually.
+  name: admin
+- name: authenticated
+- name: audited
+- description: |-
+    AdminInventoryService primary is public-only: the `health`
+    probe is intentionally outside any auth boundary so liveness
+    checks succeed before credentials are configured.
+  name: AdminInventoryService
+- description: |-
+    AdminApi spreads its methods over nested @group folders: each holds its
+    methods' handlers, stubs and routes, and the URLs ignore the folders.
+  name: admin/v1
+- name: admin/uptime
+- name: admin/v2
+- name: admin/v3
+- description: |-
+    BindingsService drives the binders, alone and combined in one request,
+    and the error and header shapes its responses carry.
+  name: bindings
+- description: |-
+    A @prefix ending with a {name...} variable matches the rest of the path;
+    the field of its name binds it, and OpenAPI documents it as a string.
+  name: prefixvar
+- name: CatalogService
+- name: collections
+- description: |-
+    CombineService wires the cross-decorator combination types into real
+    handlers: each method gives the codegen and transport stack a body to
+    decode and validate.
+  name: combine
+- name: EmptyLists
+- name: InventoryService
+- description: |-
+    HeaderEchoService demonstrates that the JSON body schema and the
+    response.headers map come out of the SAME response struct: split
+    purely by `@header` / `@cookie` decorators on individual fields.
+  name: HeaderEchoService
+- name: HiddenNotes
+- description: |-
+    StatusCodesService demonstrates each non-200 success category the
+    emitter handles distinctly: 201 (Created), 202 (Accepted), and 204
+    (No Content). The generated YAML carries the IANA reason phrase as
+    each response's description.
+  name: StatusCodesService
+- description: LedgerEntry is the service Ledger's names run into.
+  name: LedgerEntry
+- description: |-
+    Ledger.EntryList and LedgerEntry.List both come to LedgerEntryList.
+    LedgerEntry.List, whose operationId it is, keeps LedgerEntryListRespBody;
+    Ledger.EntryList, named listLedgerEntries, answers LedgerEntryList3RespBody,
+    since the declared LedgerEntryList2RespBody holds 2.
+  name: Ledger
+- description: |-
+    NestedService carries nested and mixin shapes in its requests and
+    responses, so the generated validators, transports and OpenAPI cover them.
+  name: nested
+- description: |-
+    NumbersService exposes one POST per showcase type. Request and response
+    share one type, so the codegen exercises both decode and encode paths
+    against every numeric validator chain.
+  name: NumbersService
+- name: OrdersService
+- name: raw/v1
+- name: RawModesService
+- description: ReportCard is the service Report's names run into.
+  name: ReportCard
+- description: |-
+    Report and ReportCard both declare CardList and List, so each method is
+    named after its service, and Report.CardList and ReportCard.List both come
+    to ReportCardList. ReportCard.List, whose operationId it is, keeps
+    ReportCardListRespBody; Report.CardList, named listReportCards, answers
+    ReportCardList2RespBody.
+  name: Report
+- name: scalars
+- name: internal
+- name: monitoring
+- name: public
+- description: |-
+    StringsService wires the string types into real handlers: each POST
+    gives the codegen and transport stack a body to decode and validate.
+  name: strings
+- description: |-
+    UserService is the canonical CRUD surface. Service-level
+    `@middlewares(shared.AuthRequired)` runs the cross-package
+    AuthRequired frame on every method; the per-method
+    `@errors(shared.NotFoundErr, shared.ConflictErr)` decorator on
+    DeleteUser surfaces the cross-package error envelopes in the
+    generated OpenAPI document.
+  name: UserService
+- name: ops
+- name: admin/legacy
+- description: |-
+    Primary ProfileService declaration. The @prefix lives here and only
+    here; the `extend service` blocks in sibling files inherit it
+    because the semantic phase merges every contribution into one
+    logical service.
+  name: ProfileService
+- name: snapshot
+- name: XDelegateService
+- name: XRefsService
+- description: |-
+    XRefsService shares its name with the service of package xrefs; its own
+    @group keeps the generated code apart, and the OpenAPI document lists both.
+  name: xshared

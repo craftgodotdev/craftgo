@@ -169,7 +169,7 @@ service S {
 		t.Fatal(err)
 	}
 	schemas := slices.Sorted(maps.Keys(doc.Components.Schemas))
-	if want := []string{"Resp", "ShownRespBody", "Ten"}; !slices.Equal(schemas, want) {
+	if want := []string{"Resp", "ShownRespBody"}; !slices.Equal(schemas, want) {
 		t.Errorf("schemas = %v, want %v", schemas, want)
 	}
 }

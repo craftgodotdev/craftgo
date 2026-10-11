@@ -13,13 +13,6 @@ components:
       - id
       - title
       type: object
-    BookReq:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
     GetBookRespBody:
       $ref: '#/components/schemas/Book'
 info:
@@ -49,3 +42,5 @@ paths:
       - S
 servers:
 - url: /v1
+tags:
+- name: S

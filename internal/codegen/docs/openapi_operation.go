@@ -3,6 +3,7 @@ package docs
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -100,7 +101,7 @@ func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semant
 
 // successResponse adds op's success response, and the `<stem>RespBody`
 // component it refs: a raw response without a block has no schema, since
-// logic writes it in any format.
+// logic writes it in any format, and a HEAD response has headers alone.
 func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	_, rawResp := wire.RawSides(s.decs)
 	code := strconv.Itoa(wire.SuccessStatus(s.m, s.decs))
@@ -109,19 +110,27 @@ func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *se
 	}
 	desc := successDescription(code)
 	resp := &openapi3.Response{Description: &desc}
+	head := isHead(s.m)
 	switch {
 	case s.m.Response != nil && s.m.Response.Type != nil:
-		names.put(doc, s.stem+"RespBody", responseBodySchema(s, pkg, registry))
-		resp.Content = openapi3.Content{
-			mimeApplicationJSON: &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
-			},
+		resp.Headers = buildResponseHeaders([]headerSet{{s.resp.header, s.resp.cookie}}, pkg, registry)
+		if !head {
+			names.put(doc, s.stem+"RespBody", responseBodySchema(s, pkg, registry))
+			resp.Content = openapi3.Content{
+				mimeApplicationJSON: &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
+				},
+			}
 		}
-		resp.Headers = buildResponseHeaders(s.resp.header, s.resp.cookie, pkg, registry)
-	case rawResp:
+	case rawResp && !head:
 		resp.Content = openapi3.Content{"*/*": &openapi3.MediaType{}}
 	}
 	op.Responses.Set(code, &openapi3.ResponseRef{Value: resp})
+}
+
+// isHead reports whether m answers HEAD, whose responses carry no body.
+func isHead(m *ast.Method) bool {
+	return strings.EqualFold(m.Verb, http.MethodHead)
 }
 
 // successDescription returns the reason phrase of status code (`Created`), or
@@ -149,7 +158,8 @@ func rawResponseStatus(decs []*ast.Decorator) string {
 
 // addErrorResponses adds a response per error the `@errors` of s name, at its
 // category's status, errors sharing a status in one `anyOf`, since a body may
-// match more than one of their schemas; an unknown name is skipped.
+// match more than one of their schemas, none for HEAD; an unknown name is
+// skipped.
 func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry) {
 	names := errorRefsFromDecorators(s.decs)
 	if len(names) == 0 {
@@ -158,8 +168,7 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 	type byStatus struct {
 		refs       []string
 		categories []string
-		headers    []semantic.ResolvedField
-		cookies    []semantic.ResolvedField
+		sets       []headerSet
 	}
 	grouped := map[string]*byStatus{}
 	var statusOrder []string
@@ -179,8 +188,7 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 		entry.refs = append(entry.refs, "#/components/schemas/"+typeName)
 		entry.categories = append(entry.categories, ed.Category)
 		bins := binFields(semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, registry.resolver, nil))
-		entry.headers = append(entry.headers, bins.header...)
-		entry.cookies = append(entry.cookies, bins.cookie...)
+		entry.sets = append(entry.sets, headerSet{bins.header, bins.cookie})
 	}
 	for _, status := range statusOrder {
 		entry := grouped[status]
@@ -195,20 +203,23 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 			}
 			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}}
 		}
-		headers, cookies := entry.headers, entry.cookies
+		sets := entry.sets
 		// A success `@status` may hold this code already (`@status(409)`);
 		// its headers come first.
 		existing := op.Responses.Value(status)
 		if existing != nil && existing.Value != nil {
-			headers = slices.Concat(s.resp.header, headers)
-			cookies = slices.Concat(s.resp.cookie, cookies)
+			sets = append([]headerSet{{s.resp.header, s.resp.cookie}}, sets...)
 		}
 		resp := &openapi3.Response{
 			Description: &desc,
-			Content: openapi3.Content{
+			Headers:     buildResponseHeaders(sets, pkg, registry),
+		}
+		if isHead(s.m) {
+			schema = nil
+		} else {
+			resp.Content = openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
-			},
-			Headers: buildResponseHeaders(headers, cookies, pkg, registry),
+			}
 		}
 		if existing != nil && existing.Value != nil {
 			resp = mergeStatusResponses(existing.Value, resp, schema)
@@ -407,16 +418,14 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 	add := func(in wire.Binding, fields []semantic.ResolvedField, alwaysRequired bool) {
 		for _, rf := range fields {
 			f := rf.Field
-			ref := schemaForTypeRef(nonNullType(f), pkg, registry)
-			applyFieldMetadata(f, ref, pkg, false)
-			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
+			p := &openapi3.Parameter{
 				Name:     wire.WireName(f, in),
 				In:       in.String(),
 				Required: alwaysRequired || rf.SpecRequired,
-				// The Parameter carries `deprecated` too, not only its schema.
-				Deprecated: semantic.IsDeprecated(f.Decorators),
-				Schema:     ref,
-			}})
+				Schema:   paramSchema(f, pkg, registry),
+			}
+			docOf(f, pkg).apply(p)
+			params = append(params, &openapi3.ParameterRef{Value: p})
 		}
 	}
 	add(wire.BindPath, bins.path, true)
@@ -468,6 +477,49 @@ func operationTags(svc *semantic.ServiceInfo, m *ast.Method) []string {
 	add(tagsFromDecorators(member)...)
 	if len(out) == 0 {
 		out = []string{svc.Primary.Name}
+	}
+	return out
+}
+
+// addTags lists each tag doc's operations carry in doc.Tags, in the order
+// they first appear in the document, which tools order their groups by,
+// each described by the service it is the tag of.
+func addTags(doc *openapi3.T, pkg *semantic.Package) {
+	described := serviceTagDescriptions(pkg)
+	seen := map[string]bool{}
+	paths := doc.Paths.Map()
+	for _, path := range slices.Sorted(maps.Keys(paths)) {
+		ops := paths[path].Operations()
+		for _, method := range slices.Sorted(maps.Keys(ops)) {
+			for _, tag := range ops[method].Tags {
+				if !seen[tag] {
+					seen[tag] = true
+					doc.Tags = append(doc.Tags, &openapi3.Tag{Name: tag, Description: described[tag]})
+				}
+			}
+		}
+	}
+}
+
+// serviceTagDescriptions maps the tag of each service of pkg with a doc to
+// that doc: the first of its @tags, else its @group, else its name, as its
+// methods are tagged. Of services sharing a tag, the first by package and
+// name describes it.
+func serviceTagDescriptions(pkg *semantic.Package) map[string]string {
+	out := map[string]string{}
+	for _, key := range pkg.ServiceNames() {
+		primary := pkg.Services[key].Primary
+		desc := semantic.Description(primary.Decorators, primary.Doc)
+		if desc == "" {
+			continue
+		}
+		tag := cmp.Or(route.ServiceGroup(primary), primary.Name)
+		if tags := tagsFromDecorators(primary.Decorators); len(tags) > 0 {
+			tag = tags[0]
+		}
+		if _, taken := out[tag]; !taken {
+			out[tag] = desc
+		}
 	}
 	return out
 }

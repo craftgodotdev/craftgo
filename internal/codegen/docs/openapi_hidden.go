@@ -13,11 +13,14 @@ import (
 
 // operationUses is what [dropHiddenOnly] weighs: the methods `@hidden` leaves
 // out and the documented ones, and the operations of the hidden ones, built
-// aside with the `<stem>ReqBody` and `<stem>RespBody` components they ref.
+// aside with the `<stem>ReqBody` and `<stem>RespBody` components they ref;
+// and what [dropBodylessRequests] does: whether a documented operation takes
+// a body from each request type.
 type operationUses struct {
 	hidden, shown []operation
 	built         []*openapi3.Operation
 	bodies        openapi3.Schemas
+	requestBody   map[string]bool
 }
 
 // designRefs returns the component of each declaration the methods of ops
@@ -80,26 +83,11 @@ func dropHiddenOnly(doc *openapi3.T, pkg *semantic.Package, uses operationUses) 
 		return nil
 	}
 	schemas := doc.Components.Schemas
-	refs := make(map[string][]string, len(schemas))
-	for name, s := range schemas {
-		r, err := schemaRefs(s)
-		if err != nil {
-			return err
-		}
-		refs[name] = r
+	refs, err := componentRefs(schemas)
+	if err != nil {
+		return err
 	}
-	reach := func(roots []string) map[string]bool {
-		seen := map[string]bool{}
-		for len(roots) > 0 {
-			name := roots[len(roots)-1]
-			roots = roots[:len(roots)-1]
-			if _, ok := schemas[name]; ok && !seen[name] {
-				seen[name] = true
-				roots = append(roots, refs[name]...)
-			}
-		}
-		return seen
-	}
+	reach := func(roots []string) map[string]bool { return reachable(roots, refs) }
 	roots := designRefs(uses.hidden, pkg)
 	for _, op := range uses.built {
 		opRefs, err := schemaRefs(op)
@@ -166,6 +154,34 @@ func securitySchemeNames(op *openapi3.Operation) []string {
 		}
 	}
 	return out
+}
+
+// componentRefs returns the components each component of schemas refs.
+func componentRefs(schemas openapi3.Schemas) (map[string][]string, error) {
+	refs := make(map[string][]string, len(schemas))
+	for name, s := range schemas {
+		r, err := schemaRefs(s)
+		if err != nil {
+			return nil, err
+		}
+		refs[name] = r
+	}
+	return refs, nil
+}
+
+// reachable returns the components of refs that roots name, and those they
+// ref in turn.
+func reachable(roots []string, refs map[string][]string) map[string]bool {
+	seen := map[string]bool{}
+	for len(roots) > 0 {
+		name := roots[len(roots)-1]
+		roots = roots[:len(roots)-1]
+		if _, ok := refs[name]; ok && !seen[name] {
+			seen[name] = true
+			roots = append(roots, refs[name]...)
+		}
+	}
+	return seen
 }
 
 // schemaRefs returns the component schema each $ref in v, a part of a

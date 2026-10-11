@@ -1,7 +1,6 @@
 package docs
 
 import (
-	"cmp"
 	"fmt"
 	"maps"
 	"net/http"
@@ -26,6 +25,7 @@ import (
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (ops []boundOperation, uses operationUses, shared []string) {
 	aside := &openapi3.T{Components: &openapi3.Components{Schemas: openapi3.Schemas{}}}
 	uses.bodies = aside.Components.Schemas
+	uses.requestBody = map[string]bool{}
 	held := map[string]string{}
 	for _, o := range operations(pkg, doc.Components.Schemas) {
 		s := newOpShape(o.svc, o.m, route.Resolve("", o.svc.Primary, o.m), o.id, o.stem, pkg, registry.resolver)
@@ -35,6 +35,9 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 			continue
 		}
 		uses.shown = append(uses.shown, o)
+		if r := o.m.Request; r != nil && len(r.Args) == 0 {
+			uses.requestBody[r.Name.String()] = uses.requestBody[r.Name.String()] || len(s.req.body) > 0
+		}
 		path := route.OpenAPIPath(s.full)
 		verb := strings.ToUpper(o.m.Verb)
 		this := fmt.Sprintf("%s.%s (%s %s)", o.svc.Primary.Name, o.m.Name, verb, s.full)
@@ -60,6 +63,16 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 type boundOperation struct {
 	op     *openapi3.Operation
 	fields []semantic.ResolvedField
+}
+
+// serverPath returns basePath as every route starts with it: one leading `/`
+// and no empty segment, nor a trailing `/` but the root's, `/`; "" for no
+// basePath.
+func serverPath(basePath string) string {
+	if basePath == "" {
+		return ""
+	}
+	return "/" + strings.Join(route.Segments(basePath), "/")
 }
 
 // basePathServer returns the server at basePath, each variable as every
@@ -300,65 +313,87 @@ func inlineBody(fields []semantic.ResolvedField, td *ast.TypeDecl, pkg *semantic
 	return &openapi3.SchemaRef{Value: body}
 }
 
-// buildResponseHeaders documents the @header fields as headers and the @cookie
-// ones in one `Set-Cookie` header: OpenAPI has no response cookies. Fields
-// sharing a header name in any letter case, which responses sharing a status
-// may send, make one header, spelled as the first, whose schema admits each
-// field's type; its description is the first one given, and it is deprecated
-// when every field is.
-func buildResponseHeaders(headers, cookies []semantic.ResolvedField, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
-	if len(headers) == 0 && len(cookies) == 0 {
-		return nil
-	}
-	out := openapi3.Headers{}
-	alternatives := map[string]openapi3.SchemaRefs{}
+// headerSet holds the @header and @cookie fields of one body a response may
+// send.
+type headerSet struct {
+	headers, cookies []semantic.ResolvedField
+}
+
+// buildResponseHeaders documents the headers of a response that sends the
+// body of any one of sets: each @header field as its header, and the @cookie
+// fields in one `Set-Cookie` header, as OpenAPI has no response cookies.
+// Fields sharing a header name in any letter case make one header, spelled as
+// the first, whose schema admits each field's type; it takes the first
+// description and example given, Set-Cookie naming the cookies after them,
+// is deprecated when every field is, and is required when every set sends it
+// whatever the body holds: from a field neither optional nor an array.
+func buildResponseHeaders(sets []headerSet, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
+	var names []string
 	spelled := map[string]string{}
-	for _, rf := range headers {
-		f := rf.Field
-		name := wire.WireName(f, wire.BindHeader)
+	schemas := map[string]openapi3.SchemaRefs{}
+	docs := map[string]*paramDoc{}
+	add := func(name string, schema *openapi3.SchemaRef, doc paramDoc) string {
 		key := http.CanonicalHeaderKey(name)
-		if first, seen := spelled[key]; seen {
-			name = first
+		first, seen := spelled[key]
+		if seen {
+			docs[first].merge(doc)
 		} else {
+			first = name
 			spelled[key] = name
+			names = append(names, name)
+			docs[name] = &doc
 		}
-		schema := schemaForTypeRef(nonNullType(f), pkg, registry)
-		applyFieldMetadata(f, schema, pkg, false)
-		if !slices.ContainsFunc(alternatives[name], func(s *openapi3.SchemaRef) bool { return reflect.DeepEqual(s, schema) }) {
-			alternatives[name] = append(alternatives[name], schema)
+		if !slices.ContainsFunc(schemas[first], func(s *openapi3.SchemaRef) bool { return reflect.DeepEqual(s, schema) }) {
+			schemas[first] = append(schemas[first], schema)
 		}
-		desc, deprecated := semantic.Description(f.Decorators, f.Doc), semantic.IsDeprecated(f.Decorators)
-		if h, seen := out[name]; seen {
-			h.Value.Description = cmp.Or(h.Value.Description, desc)
-			h.Value.Deprecated = h.Value.Deprecated && deprecated
-			continue
-		}
-		out[name] = &openapi3.HeaderRef{Value: &openapi3.Header{
-			Parameter: openapi3.Parameter{Description: desc, Deprecated: deprecated},
-		}}
+		return key
 	}
-	for name, schemas := range alternatives {
-		out[name].Value.Schema = schemas[0]
-		if len(schemas) > 1 {
-			out[name].Value.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: schemas}}
+	sent := make([]map[string]bool, len(sets))
+	var cookies []string
+	for i, set := range sets {
+		sent[i] = map[string]bool{}
+		for _, rf := range set.headers {
+			f := rf.Field
+			key := add(wire.WireName(f, wire.BindHeader), paramSchema(f, pkg, registry), docOf(f, pkg))
+			if !f.Type.Optional && !f.Type.Array {
+				sent[i][key] = true
+			}
+		}
+		for _, rf := range set.cookies {
+			if name := wire.WireName(rf.Field, wire.BindCookie); !slices.Contains(cookies, name) {
+				cookies = append(cookies, name)
+			}
+			if !rf.Field.Type.Optional {
+				sent[i][setCookie] = true
+			}
 		}
 	}
 	if len(cookies) > 0 {
-		var names []string
-		for _, rf := range cookies {
-			if name := wire.WireName(rf.Field, wire.BindCookie); !slices.Contains(names, name) {
-				names = append(names, name)
-			}
+		add(setCookie, &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}, paramDoc{})
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	out := openapi3.Headers{}
+	for _, name := range names {
+		key := http.CanonicalHeaderKey(name)
+		h := &openapi3.Header{}
+		docs[name].apply(&h.Parameter)
+		if key == setCookie && len(cookies) > 0 {
+			h.Description = appendDescription(h.Description, "Sets cookies: "+strings.Join(cookies, ", "))
 		}
-		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{
-			Parameter: openapi3.Parameter{
-				Schema:      &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}},
-				Description: "Sets cookies: " + strings.Join(names, ", "),
-			},
-		}}
+		h.Schema = schemas[name][0]
+		if len(schemas[name]) > 1 {
+			h.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: schemas[name]}}
+		}
+		h.Required = !slices.ContainsFunc(sent, func(always map[string]bool) bool { return !always[key] })
+		out[name] = &openapi3.HeaderRef{Value: h}
 	}
 	return out
 }
+
+// setCookie is the response header the @cookie fields ride.
+const setCookie = "Set-Cookie"
 
 // schemaFromFields builds an inline object schema of the fields that ride
 // the body.

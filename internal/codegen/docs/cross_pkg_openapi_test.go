@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
+
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -237,6 +239,55 @@ type Item { id string }`,
 		}
 		if prop.Value == nil || !prop.Value.Type.Is("string") {
 			t.Errorf("%s.%s is not the type argument string", c.inst, c.field)
+		}
+	}
+}
+
+// An error documented under the component name a declaration of another
+// package takes - error `a.Missing` is `MissingErr`, as type `b.MissingErr`
+// and error `c.MissingErr` are - is named after its package, and so is each
+// declaration it shares the name with.
+func TestCrossPkgErrorComponentNameTakesThePackagePrefix(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+error NotFound Missing
+type Ok { ok bool }
+@prefix("/a")
+service ASvc {
+  @errors(Missing)
+  get Ping /ping { response Ok }
+}`,
+		"b/b.craftgo": `package b
+type MissingErr { reason string }
+@prefix("/b")
+service BSvc { get Pong /pong { response MissingErr } }`,
+		"c/c.craftgo": `package c
+error Conflict MissingErr { at string }
+type Ok2 { ok bool }
+@prefix("/c")
+service CSvc {
+  @errors(MissingErr)
+  post Put /put { response Ok2 }
+}`,
+	}, &config.Config{})
+	for _, name := range []string{"AMissingErr", "BMissingErr", "CMissingErr"} {
+		if doc.Components.Schemas[name] == nil {
+			t.Errorf("no %s component", name)
+		}
+	}
+	if doc.Components.Schemas["MissingErr"] != nil {
+		t.Error("a component is still named MissingErr")
+	}
+	for _, c := range []struct {
+		ref  *openapi3.SchemaRef
+		want string
+	}{
+		{doc.Paths.Find("/a/ping").Get.Responses.Status(404).Value.Content.Get("application/json").Schema, "AMissingErr"},
+		{doc.Components.Schemas["PongRespBody"], "BMissingErr"},
+		{doc.Paths.Find("/c/put").Post.Responses.Status(409).Value.Content.Get("application/json").Schema, "CMissingErr"},
+	} {
+		if got := c.ref.Ref; got != "#/components/schemas/"+c.want {
+			t.Errorf("refs %q, want %s", got, c.want)
 		}
 	}
 }

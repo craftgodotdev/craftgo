@@ -2,8 +2,10 @@ package docs
 
 import (
 	"math/big"
+	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -40,6 +42,7 @@ var schemaKeywords = map[string]schemaKeyword{
 		if name == semantic.FormatRaw {
 			// Raw bytes travel in the message's own encoding, not base64.
 			s.Type, s.Format = nil, ""
+			delete(s.Extensions, "contentEncoding")
 			s.Description = appendDescription(s.Description, rawSchemaDescription)
 			return
 		}
@@ -96,11 +99,13 @@ func boundKeyword(s semantic.BoundSide) string {
 }
 
 // lengthKeywords stamps the minLength or maxLength of each side of d, a
-// length bound; `@length(N)` sets both to N.
-func lengthKeywords(d *ast.Decorator, s *openapi3.Schema, _ string) {
+// length bound, on a string; `@length(N)` sets both to N. On bytes they
+// would count the characters of the base64 text: [byteLengthNote] words the
+// bytes the validator counts.
+func lengthKeywords(d *ast.Decorator, s *openapi3.Schema, prim string) {
 	sides, _ := semantic.BoundSides(d.Name)
 	args := semantic.BoundArgs(d)
-	if args == nil || !lengthKeywordsApply(s) {
+	if sp, _ := prims.Lookup(prim); args == nil || sp.Kind == prims.Bytes {
 		return
 	}
 	for i, side := range sides {
@@ -132,9 +137,44 @@ func itemCountKeywords(d *ast.Decorator, s *openapi3.Schema, _ string) {
 }
 
 // applyFieldConstraints stamps the keyword of every constraint in ds that
-// has a schema form onto s, the schema of a value of DSL primitive prim.
+// has a schema form onto s, the schema of a value of DSL primitive prim, and
+// a bytes value's length after its description.
 func applyFieldConstraints(ds []*ast.Decorator, s *openapi3.Schema, prim string) {
 	applyConstraintFamilies(ds, s, semantic.ConstraintSchema, prim)
+	if note := byteLengthNote(ds, prim); note != "" {
+		s.Description = appendDescription(s.Description, note)
+	}
+}
+
+// byteLengthNote words the length the decorators ds give a value of DSL
+// primitive prim when it is bytes, in the bytes the validator counts, or
+// returns "": no schema keyword counts the bytes a base64 text decodes to.
+func byteLengthNote(ds []*ast.Decorator, prim string) string {
+	if sp, _ := prims.Lookup(prim); sp.Kind != prims.Bytes {
+		return ""
+	}
+	var counted openapi3.Schema
+	applyConstraintFamilies(ds, &counted, semantic.ConstraintLength, "string")
+	lo, hi := counted.MinLength, counted.MaxLength
+	switch {
+	case hi == nil && lo == 0:
+		return ""
+	case hi == nil:
+		return "Decodes to at least " + byteCount(lo) + "."
+	case lo == 0:
+		return "Decodes to at most " + byteCount(*hi) + "."
+	case lo == *hi:
+		return "Decodes to exactly " + byteCount(lo) + "."
+	}
+	return "Decodes to between " + strconv.FormatUint(lo, 10) + " and " + byteCount(*hi) + "."
+}
+
+// byteCount spells n bytes.
+func byteCount(n uint64) string {
+	if n == 1 {
+		return "1 byte"
+	}
+	return strconv.FormatUint(n, 10) + " bytes"
 }
 
 // applyConstraintFamilies stamps onto s, the schema of a value of DSL

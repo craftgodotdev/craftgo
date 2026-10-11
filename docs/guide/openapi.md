@@ -7,9 +7,9 @@ craftgo emits OpenAPI 3.1 from the same DSL that drives the handlers. The spec i
 Every `craftgo gen` produces `docs/openapi.yaml` with:
 
 - Every method as a `paths` entry, but a [`@hidden`](#hidden-endpoints) one
-- Every non-generic type, enum, scalar and error as a `components.schemas` entry, but one only hidden methods use
+- Every non-generic type, enum, scalar and error as a `components.schemas` entry, but one only hidden methods use and a request type that is all parameters
 - Every validator decorator mapped to its OpenAPI keyword (`minLength`, `pattern`, `enum`, ...)
-- Doc comments flowing into descriptions
+- Doc comments flowing into descriptions, a service's into its [tag](#tags)'s
 - Security schemes from your config
 
 The spec renders directly in **Swagger UI** and **ReDoc**, and feeds `openapi-generator` for client libraries in any language - the day-to-day tools accept it as-is.
@@ -32,8 +32,14 @@ Every `craftgo gen` writes `docs/openapi.yaml` covering:
 - `components.schemas` - every non-generic `type`, `enum`, `scalar` and
   `error` but one only hidden methods use, with full structure, each generic instance a schema or an operation
   refers to (`PageOfUser`), and the `<Method>ReqBody` / `<Method>RespBody` of
-  each JSON body
+  each JSON body. A request type no operation takes a body from - its fields
+  all bound to the path, the query, headers or cookies - is left out, with a
+  mixin of it that binds no body field, unless a schema refers to it
 - `components.securitySchemes` - when `openapi.securitySchemes` is in your config
+- `tags` - each tag an operation carries, in the order the operations first
+  carry them
+- `servers` - the `openapi.basePath`, as the routes take it: `api`, `/api/`
+  and `//api` are all `/api`
 
 ## Validity
 
@@ -42,6 +48,8 @@ The output is consumed cleanly by:
 - The official OpenAPI parser behind **Swagger UI** and **ReDoc** - renders without errors.
 - [`openapi-generator`](https://openapi-generator.tech/) and similar client generators.
 - [oasdiff](https://github.com/oasdiff/oasdiff) - breaking-change detection between versions.
+
+YAML 1.1 readers such as PyYAML, which the Python validators load documents with, read the document as YAML 1.2 readers do: a string YAML 1.1 takes for another type - `=`, `<<`, `yes`, `2001-12-14 21:59:43 -5`, `0b_` - is double-quoted, a float always has a dot (`1.0e-07`), and DEL, a C1 control, U+FFFE or U+FFFF in a doc or a value is written as an escape.
 
 The structure (paths, schemas, parameters, `anyOf` and `not` for cross-field constraints, `anyOf` for responses sharing a status, `propertyNames` for map keys) is valid 3.1: [Redocly CLI](https://redocly.com/redocly-cli/)'s structural rules and [openapi-spec-validator](https://github.com/python-openapi/openapi-spec-validator) accept it, given security schemes that set no field of another type, such as a `bearerFormat` on a `basic` scheme; `craftgo gen` stops on a scheme an `@security` names that misses a field its type requires. Their style rules may still warn, about an operation without a `summary`, say.
 
@@ -147,8 +155,21 @@ Field-level validators map to OpenAPI keywords:
 | `@gt(0)`, `@lt(100)`           | `exclusiveMinimum: 0` / `exclusiveMaximum: 100` |
 | `@minItems(1)`, `@maxItems(10)` | `minItems: 1, maxItems: 10` |
 | `@uniqueItems`                 | `uniqueItems: true`      |
-| `@example("alice")`            | `example: alice`         |
+| `@example("alice")`            | `example: alice`; `@example(null)` is `example: null` |
 | `@deprecated`                  | `deprecated: true`       |
+| `int8`, `int16`, `int32`, an unsigned type | `minimum` and `maximum` of the Go type's range, which a bound on the field replaces on its side |
+| `float32`                      | `exclusiveMinimum` / `exclusiveMaximum` at ±3.4028235677973366e+38, the least magnitude that overflows a float32 |
+| `bytes`                        | `type: string, contentEncoding: base64` |
+| `@length` / `@minLength` / `@maxLength` on `bytes` | the description says the decoded length (`Decodes to at most 64 bytes.`) |
+| `map<int, V>`, `map<uint8, V>`  | `propertyNames: {type: string, pattern: ^[+-]?[0-9]+$}`, unsigned without the sign: `^[0-9]+$` |
+
+`minLength` and `maxLength` on a `bytes` value would count the characters of
+its base64 text, not the bytes the validator counts, and no schema keyword
+counts the bytes a base64 text decodes to, so the description carries the
+length instead.
+
+A parameter carries its field's description, deprecation and example; its
+schema holds the type, the constraints and the default.
 
 Only a JSON body field admits `null`. A parameter, a response header and a
 multipart part are sent or not: `?` makes one optional, and its schema is the
@@ -263,7 +284,10 @@ UserNotFoundErr:
 ```
 
 An error with no field, like `UserNotFound`, is documented as the `code` and
-`message` the server sends for it. Errors of one category share its response,
+`message` the server sends for it. A component name two packages' declarations
+share is prefixed with each one's package: error `a.Missing` and type
+`b.MissingErr` are `AMissingErr` and `BMissingErr`, as two `User` types are
+`AUser` and `BUser`. Errors of one category share its response,
 their schemas in an `anyOf`, as does a success `@status` with that code: two
 errors may send bodies both schemas admit, such as two `{code, message}`
 envelopes. A header they send under one name admits each one's type.
@@ -273,6 +297,28 @@ binding or validation, 404, 405, 413 for a body over its cap, 500 for a panic or
 an untyped error, 504 for a deadline - are JSON `{"message": "..."}` at their
 status and are not in the document, which lists each operation's success
 response and its `@errors` only.
+
+## Response headers
+
+A response's `@header` fields are its headers, and its `@cookie` fields share
+one `Set-Cookie` header, described by the cookies it sets; a
+`@header("Set-Cookie")` field joins it, its description first. A header is
+`required` when every body its status may answer sends it whatever the body
+holds: a field neither optional nor an array, as an empty array sends none. A
+HEAD operation's responses carry their headers and no content.
+
+## Tags
+
+An operation's tags are its service's `@tags`, its `@group`, then its own
+`@tags`, else the service's name. The top-level `tags` list holds each of
+them in the order the operations first carry them, which Swagger UI and ReDoc
+order their groups by. A service's doc comment or `@doc` describes its tag:
+its first `@tags`, else its `@group`, else its name; of services sharing one,
+the first by package and name describes it.
+
+An enum whose values have a doc or `@deprecated` describes each value, in
+order, in `x-enum-descriptions`, which openapi-generator puts beside the
+constants it generates.
 
 ## Security schemes
 
