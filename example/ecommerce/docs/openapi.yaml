@@ -1334,166 +1334,6 @@ paths:
       - bearer: []
       tags:
       - orders
-  /orders/{id}:
-    get:
-      description: Fetch one order.
-      operationId: GetOrder
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 64
-          minLength: 1
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetOrderRespBody'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedErr'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderNotFoundErr'
-          description: NotFound
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MaintenanceWindowErr'
-          description: ServiceUnavailable
-      security:
-      - bearer: []
-      tags:
-      - orders
-  /orders/{id}/cancel:
-    post:
-      description: Admin cancellation. Idempotent.
-      operationId: CancelOrder
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 64
-          minLength: 1
-          type: string
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CancelOrderRespBody'
-          description: Created
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActionDeniedErr'
-          description: Forbidden
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderNotFoundErr'
-          description: NotFound
-      security:
-      - bearer: []
-      - oauth2: []
-      tags:
-      - orders
-  /orders/{id}/replay:
-    post:
-      description: Admin replay (parent chain only).
-      operationId: Replay
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 64
-          minLength: 1
-          type: string
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ReplayRespBody'
-          description: Created
-      security:
-      - bearer: []
-      - oauth2: []
-      tags:
-      - orders
-  /orders/{id}/ship:
-    post:
-      description: Admin force-ship. Idempotent.
-      operationId: ForceShip
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 64
-          minLength: 1
-          type: string
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForceShipRespBody'
-          description: Created
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActionDeniedErr'
-          description: Forbidden
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderNotFoundErr'
-          description: NotFound
-      security:
-      - bearer: []
-      - oauth2: []
-      tags:
-      - orders
-  /orders/{id}/track:
-    get:
-      description: Public order tracking by id - CORS only, no auth.
-      operationId: TrackPublic
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 64
-          minLength: 1
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TrackPublicRespBody'
-          description: OK
-      security:
-      - bearer: []
-      tags:
-      - orders
   /orders/by-status:
     get:
       description: Filter orders by status - showcases @query/@header/@cookie on one
@@ -1655,6 +1495,166 @@ paths:
               schema:
                 $ref: '#/components/schemas/RateLimitedErr'
           description: TooManyRequests
+      security:
+      - bearer: []
+      tags:
+      - orders
+  /orders/{id}:
+    get:
+      description: Fetch one order.
+      operationId: GetOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderRespBody'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedErr'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundErr'
+          description: NotFound
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceWindowErr'
+          description: ServiceUnavailable
+      security:
+      - bearer: []
+      tags:
+      - orders
+  /orders/{id}/cancel:
+    post:
+      description: Admin cancellation. Idempotent.
+      operationId: CancelOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelOrderRespBody'
+          description: Created
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionDeniedErr'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundErr'
+          description: NotFound
+      security:
+      - bearer: []
+      - oauth2: []
+      tags:
+      - orders
+  /orders/{id}/replay:
+    post:
+      description: Admin replay (parent chain only).
+      operationId: Replay
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayRespBody'
+          description: Created
+      security:
+      - bearer: []
+      - oauth2: []
+      tags:
+      - orders
+  /orders/{id}/ship:
+    post:
+      description: Admin force-ship. Idempotent.
+      operationId: ForceShip
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForceShipRespBody'
+          description: Created
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionDeniedErr'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundErr'
+          description: NotFound
+      security:
+      - bearer: []
+      - oauth2: []
+      tags:
+      - orders
+  /orders/{id}/track:
+    get:
+      description: Public order tracking by id - CORS only, no auth.
+      operationId: TrackPublic
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackPublicRespBody'
+          description: OK
       security:
       - bearer: []
       tags:

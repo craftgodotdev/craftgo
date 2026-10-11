@@ -1123,12 +1123,12 @@ components:
     CollidingNames:
       allOf:
       - properties:
-          user_id:
+          userId:
+            minLength: 2
             type:
             - string
             - "null"
-          userId:
-            minLength: 2
+          user_id:
             type:
             - string
             - "null"
@@ -1976,12 +1976,12 @@ components:
     EchoCollidingNamesReqBody:
       allOf:
       - properties:
-          user_id:
+          userId:
+            minLength: 2
             type:
             - string
             - "null"
-          userId:
-            minLength: 2
+          user_id:
             type:
             - string
             - "null"
@@ -3602,6 +3602,77 @@ components:
       - code
       - message
       type: object
+    MapKeyValueReqBody:
+      description: |-
+        Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
+        validators and each value Email's, and a bad key and a bad value are
+        reported under the field name alike.
+      properties:
+        index:
+          additionalProperties:
+            $ref: '#/components/schemas/CollectionsEmail'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+            type: string
+          type: object
+      required:
+      - index
+      type: object
+    MapKeyValueRespBody:
+      $ref: '#/components/schemas/Map_KeyAndValue'
+    MapPages:
+      description: |-
+        MapPages instantiates Page over a map, an array of those maps, a map of
+        arrays and a map of optional values: four components. `[]` on the map leads
+        its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
+      properties:
+        byBatch:
+          $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
+        byKey:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
+        byList:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
+        byMaybe:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderOrNull'
+      required:
+      - byKey
+      - byBatch
+      - byList
+      - byMaybe
+      type: object
+    MapStructReqBody:
+      description: |-
+        Map_StructValue is the struct-valued map: each User value is validated,
+        its email scalar's @format(email) included.
+      properties:
+        users:
+          additionalProperties:
+            $ref: '#/components/schemas/CollectionsUser'
+          type: object
+      required:
+      - users
+      type: object
+    MapStructRespBody:
+      $ref: '#/components/schemas/Map_StructValue'
+    MapTag:
+      maxLength: 20
+      minLength: 1
+      type: string
+    MapValueGeneric:
+      description: |-
+        MapValueGeneric verifies that generic instances ride the `map<K, V>`
+        builtin without losing their synthetic name: the value branch goes
+        through schemaForTypeRef recursively, so `Page<Order>` is registered
+        the same way it would be at top level.
+      properties:
+        bucket:
+          additionalProperties:
+            $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
+          type: object
+      required:
+      - bucket
+      type: object
     Map_ArrayOfMaps:
       description: |-
         Map_ArrayOfMaps holds an array of maps whose value carries a validator;
@@ -3799,77 +3870,6 @@ components:
           type: object
       required:
       - users
-      type: object
-    MapKeyValueReqBody:
-      description: |-
-        Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
-        validators and each value Email's, and a bad key and a bad value are
-        reported under the field name alike.
-      properties:
-        index:
-          additionalProperties:
-            $ref: '#/components/schemas/CollectionsEmail'
-          propertyNames:
-            maxLength: 64
-            minLength: 1
-            type: string
-          type: object
-      required:
-      - index
-      type: object
-    MapKeyValueRespBody:
-      $ref: '#/components/schemas/Map_KeyAndValue'
-    MapPages:
-      description: |-
-        MapPages instantiates Page over a map, an array of those maps, a map of
-        arrays and a map of optional values: four components. `[]` on the map leads
-        its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
-      properties:
-        byBatch:
-          $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
-        byKey:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
-        byList:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
-        byMaybe:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderOrNull'
-      required:
-      - byKey
-      - byBatch
-      - byList
-      - byMaybe
-      type: object
-    MapStructReqBody:
-      description: |-
-        Map_StructValue is the struct-valued map: each User value is validated,
-        its email scalar's @format(email) included.
-      properties:
-        users:
-          additionalProperties:
-            $ref: '#/components/schemas/CollectionsUser'
-          type: object
-      required:
-      - users
-      type: object
-    MapStructRespBody:
-      $ref: '#/components/schemas/Map_StructValue'
-    MapTag:
-      maxLength: 20
-      minLength: 1
-      type: string
-    MapValueGeneric:
-      description: |-
-        MapValueGeneric verifies that generic instances ride the `map<K, V>`
-        builtin without losing their synthetic name: the value branch goes
-        through schemaForTypeRef recursively, so `Page<Order>` is registered
-        the same way it would be at top level.
-      properties:
-        bucket:
-          additionalProperties:
-            $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
-          type: object
-      required:
-      - bucket
       type: object
     Matrix:
       description: |-
@@ -4359,15 +4359,6 @@ components:
         semantic phase rejects bounds beyond a type's representable range;
         these must all sit AT the boundary and pass clean.
       properties:
-        int8Full:
-          description: int8 full range
-          maximum: 127
-          minimum: -128
-          type: integer
-        int8Range:
-          maximum: 127
-          minimum: -128
-          type: integer
         int16Full:
           description: int16 full range
           maximum: 32767
@@ -4379,14 +4370,14 @@ components:
           maximum: 2147483647
           minimum: -2147483648
           type: integer
-        uint8Full:
-          maximum: 255
-          minimum: 0
+        int8Full:
+          description: int8 full range
+          maximum: 127
+          minimum: -128
           type: integer
-        uint8Range:
-          description: uint8 full range
-          maximum: 255
-          minimum: 0
+        int8Range:
+          maximum: 127
+          minimum: -128
           type: integer
         uint16Full:
           description: uint16 full range
@@ -4396,6 +4387,15 @@ components:
         uint32Full:
           description: uint32 full range
           maximum: 4294967295
+          minimum: 0
+          type: integer
+        uint8Full:
+          maximum: 255
+          minimum: 0
+          type: integer
+        uint8Range:
+          description: uint8 full range
+          maximum: 255
           minimum: 0
           type: integer
       required:
@@ -4428,10 +4428,6 @@ components:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
           type: integer
-        gtLtInt8:
-          exclusiveMaximum: 100
-          exclusiveMinimum: -100
-          type: integer
         gtLtInt16:
           exclusiveMaximum: 32000
           exclusiveMinimum: -32000
@@ -4446,13 +4442,13 @@ components:
           exclusiveMinimum: 0
           format: int64
           type: integer
+        gtLtInt8:
+          exclusiveMaximum: 100
+          exclusiveMinimum: -100
+          type: integer
         gteLteInt:
           maximum: 1000
           minimum: 0
-          type: integer
-        gteLteInt8:
-          maximum: 100
-          minimum: -100
           type: integer
         gteLteInt16:
           maximum: 32000
@@ -4467,6 +4463,10 @@ components:
           format: int64
           maximum: 9000000000000000000
           minimum: -9000000000000000000
+          type: integer
+        gteLteInt8:
+          maximum: 100
+          minimum: -100
           type: integer
         negInt:
           exclusiveMaximum: 0
@@ -4486,11 +4486,6 @@ components:
           maximum: 1000
           minimum: 0
           type: integer
-        rangeInt8:
-          description: int8 - bound capacity edge (the validator should narrow safely).
-          maximum: 50
-          minimum: -50
-          type: integer
         rangeInt16:
           description: int16
           maximum: 1000
@@ -4507,6 +4502,11 @@ components:
           format: int64
           maximum: 1000000000
           minimum: -1000000000
+          type: integer
+        rangeInt8:
+          description: int8 - bound capacity edge (the validator should narrow safely).
+          maximum: 50
+          minimum: -50
           type: integer
         stepInt:
           description: '@multipleOf on int.'
@@ -4804,10 +4804,6 @@ components:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
           type: integer
-        gtLtUint8:
-          exclusiveMaximum: 255
-          exclusiveMinimum: 0
-          type: integer
         gtLtUint16:
           exclusiveMaximum: 65535
           exclusiveMinimum: 0
@@ -4820,12 +4816,12 @@ components:
           exclusiveMaximum: 1000000000000
           exclusiveMinimum: 0
           type: integer
+        gtLtUint8:
+          exclusiveMaximum: 255
+          exclusiveMinimum: 0
+          type: integer
         gteLteUint:
           maximum: 1000
-          minimum: 0
-          type: integer
-        gteLteUint8:
-          maximum: 255
           minimum: 0
           type: integer
         gteLteUint16:
@@ -4838,6 +4834,10 @@ components:
           type: integer
         gteLteUint64:
           maximum: 1000000000000
+          minimum: 0
+          type: integer
+        gteLteUint8:
+          maximum: 255
           minimum: 0
           type: integer
         maxUint64:
@@ -4858,11 +4858,6 @@ components:
           maximum: 1000
           minimum: 0
           type: integer
-        rangeUint8:
-          description: uint8 - full capacity test.
-          maximum: 255
-          minimum: 0
-          type: integer
         rangeUint16:
           description: uint16
           maximum: 65535
@@ -4876,6 +4871,11 @@ components:
         rangeUint64:
           description: uint64 - even bigger.
           maximum: 1000000000000
+          minimum: 0
+          type: integer
+        rangeUint8:
+          description: uint8 - full capacity test.
+          maximum: 255
           minimum: 0
           type: integer
         stepUint64:
@@ -9478,6 +9478,20 @@ paths:
           description: OK
       tags:
       - AccountUserService
+  /account/admin/reset:
+    post:
+      description: Hard reset - bypasses BasicAuth, uses its own minimal chain.
+      operationId: AccountServiceReset
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountServiceResetRespBody'
+          description: Created
+      tags:
+      - account
+      - admin
   /account/admin/{id}:
     delete:
       description: 'Delete an account - admin-only. Chain: [RateLimit, BasicAuth,
@@ -9496,20 +9510,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeleteAccountRespBody'
           description: OK
-      tags:
-      - account
-      - admin
-  /account/admin/reset:
-    post:
-      description: Hard reset - bypasses BasicAuth, uses its own minimal chain.
-      operationId: AccountServiceReset
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountServiceResetRespBody'
-          description: Created
       tags:
       - account
       - admin
@@ -9584,6 +9584,20 @@ paths:
       - AdminBearer: []
       tags:
       - admin
+  /admin/inventory/health:
+    get:
+      description: Liveness probe. Public on purpose - operators hit this before secrets
+        are loaded.
+      operationId: AdminInventoryServiceHealth
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
+          description: OK
+      tags:
+      - AdminInventoryService
   /admin/inventory/{itemId}/promote:
     post:
       description: Promote an item to the featured slot. Inherits the same auth chain
@@ -9614,20 +9628,6 @@ paths:
       - AdminWriteScope: []
       tags:
       - admin
-  /admin/inventory/health:
-    get:
-      description: Liveness probe. Public on purpose - operators hit this before secrets
-        are loaded.
-      operationId: AdminInventoryServiceHealth
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
-          description: OK
-      tags:
-      - AdminInventoryService
   /adminapi/inherit/ping:
     get:
       operationId: PingInherit
@@ -11682,21 +11682,6 @@ paths:
           description: Created
       tags:
       - StatusCodesService
-  /jobs/{jobId}:
-    delete:
-      description: Cancel a queued job. No body on success - 204 keeps the wire silent.
-      operationId: CancelJob
-      parameters:
-      - in: path
-        name: jobId
-        required: true
-        schema:
-          $ref: '#/components/schemas/ID'
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - StatusCodesService
   /jobs/enqueue:
     post:
       description: Enqueue a job for async processing; returns once accepted by the
@@ -11715,6 +11700,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnqueueJobRespBody'
           description: Accepted
+      tags:
+      - StatusCodesService
+  /jobs/{jobId}:
+    delete:
+      description: Cancel a queued job. No body on success - 204 keeps the wire silent.
+      operationId: CancelJob
+      parameters:
+      - in: path
+        name: jobId
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+      responses:
+        "204":
+          description: No Content
       tags:
       - StatusCodesService
   /ledger-entry/all:
