@@ -27,9 +27,10 @@ type Nullable[T any] struct {
 var nullLiteral = []byte("null")
 
 // UnmarshalJSON records that the member came and decodes it unless it is null. A value that fails
-// to decode fails with a *memberError, which the default codec words at the value's JSON path.
+// to decode fails with a *memberError, which the default codec words at the value's JSON path. A
+// member the body repeats reads as its last.
 func (n *Nullable[T]) UnmarshalJSON(b []byte) error {
-	n.present = true
+	*n = Nullable[T]{present: true}
 	if bytes.Equal(bytes.TrimSpace(b), nullLiteral) {
 		n.null = true
 		return nil

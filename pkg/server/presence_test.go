@@ -45,6 +45,19 @@ func TestNullableTellsAbsentFromNull(t *testing.T) {
 	}
 }
 
+// A member the body repeats reads as its last, null or not.
+func TestNullableRepeatedMemberReadsAsItsLast(t *testing.T) {
+	for body, want := range map[string]*int{`{"n":null,"n":3}`: new(3), `{"n":3,"n":null}`: nil} {
+		var b nullableBody
+		if err := JSON().Decode(strings.NewReader(body), &b); err != nil {
+			t.Fatalf("%s: %v", body, err)
+		}
+		if got := b.N.Value(); (got == nil) != (want == nil) || got != nil && *got != *want {
+			t.Errorf("%s: got %v, want %v", body, got, want)
+		}
+	}
+}
+
 // nullableBase is a mixin a wire struct embeds.
 type nullableBase struct {
 	N int `json:"n"`
