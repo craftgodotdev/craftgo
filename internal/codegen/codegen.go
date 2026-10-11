@@ -13,6 +13,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -64,8 +65,10 @@ func SelectableTargets() []string {
 	return append(append([]string{}, config.SupportedLangs...), targetDocs)
 }
 
-// Generate runs OpenAPI, which a new main.go embeds from disk, then Go and the
-// event targets for in under projectRoot; targets narrows the run and its sweep.
+// Generate renders OpenAPI, which a new main.go embeds, then Go and the event
+// targets for in under projectRoot, writes every file once all of them have
+// rendered, then sweeps; targets narrows the run and its sweep. A failure to
+// render or write leaves the tree as it was.
 func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...string) error {
 	sel, err := selection(targets)
 	if err != nil {
@@ -74,10 +77,15 @@ func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...stri
 	if err := validate(in, cfg, sel); err != nil {
 		return err
 	}
-	if err := emit(in, cfg, projectRoot, sel); err != nil {
+	files, err := genfile.Collect(func() error { return emit(in, cfg, projectRoot, sel) })
+	if err != nil {
 		return err
 	}
-	return prune(plan(in, cfg, projectRoot, sel))
+	if err := genfile.Commit(files); err != nil {
+		return err
+	}
+	paths, written := plan(in, cfg, projectRoot, sel)
+	return prune(projectRoot, paths, written)
 }
 
 // Generated reports how many DSL packages [Generate] with targets writes output
@@ -116,12 +124,14 @@ func plan(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool
 		paths, files := target.plan(in.Design, projectRoot, outDir)
 		take(sel[target.lang], paths, files)
 	}
+	take(sel[config.LangGo], golang.StaleEventPlan(cfg, projectRoot), nil)
 	paths, files = docs.Plan(in.Design, cfg, projectRoot)
 	take(sel[targetDocs], paths, files)
 	return owned(headers, projectRoot), written
 }
 
-// emit runs the selected targets in order, without the sweep.
+// emit runs the selected targets in order, without the sweep; under [genfile.Collect] it
+// renders their files without writing them.
 func emit(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) error {
 	if sel[targetDocs] {
 		if err := docs.GenerateOpenAPI(in.Design, cfg, projectRoot); err != nil {

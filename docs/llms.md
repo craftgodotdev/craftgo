@@ -554,17 +554,17 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | Command                          | Description                                                                         |
 | -------------------------------- | ----------------------------------------------------------------------------------- |
 | `craftgo init [path]`            | Scaffold a design folder with starter `craftgo.design.yaml`. Default path `design`. |
-| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, checking the direct subdirectories at each level (not hidden ones, `vendor` or `node_modules`; two matches at one level ask for `-f`), then generate. |
+| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, checking the direct subdirectories at each level (links to directories included; not hidden ones, `vendor` or `node_modules`; two matches at one level ask for `-f`) and stopping at the directory that holds `go.mod` or is a repository root, then generate. Each run first prints `craftgo: design <dir>, project root <dir>`. |
 | `craftgo gen -f <design-folder>` | Skip walk-up; use the manifest at that folder.                                      |
-| `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root.                                         |
-| `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown name exits 1. |
-| `craftgo fmt [path]`             | Canonical-format `.craftgo` files. Defaults to writing in place.                    |
+| `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root, which must be an existing directory.     |
+| `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown or empty name exits 1. |
+| `craftgo fmt [path]`             | Canonical-format `.craftgo` files, walking a directory as gen reads a design folder (links followed; hidden directories, `vendor`, `node_modules` and `.`/`_` files skipped; an unreadable directory warned of and skipped). Defaults to writing in place, through a rename that keeps the file's mode; a file it cannot write is reported and the rest still formatted, exit 1. |
 | `craftgo fmt -l`                 | List files that would change (no write); exit 1 when any differs.                   |
-| `craftgo fmt -w`                 | Write the formatted result back (default).                                          |
+| `craftgo fmt -w`                 | Write the formatted result back (default); `-w=false` prints it to stdout instead.  |
 | `craftgo version`                | Print CLI version.                                                                  |
-| `craftgo help`                   | Show top-level help.                                                                |
+| `craftgo help [command]`         | Show top-level help, or one command's usage.                                        |
 
-Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors, a file `fmt -l` lists, and a bad flag or argument, printed with the command's usage), 2 (a missing or unknown command). The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
+Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors, a file `fmt -l` lists, and a bad flag or argument, printed with the command's usage), 2 (a missing or unknown command). A semantic warning is printed on stderr as `<file>:<line>:<col>: warning: <message>` and does not fail `gen`. The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
 
 `craftgo-lsp` is a separate binary. Install with `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`. Officially supported editor integration: VS Code only.
 
@@ -590,12 +590,12 @@ output:
   fileCase: snake # snake (default) | kebab | camel - generated file/dir names only; URL routes and Go identifiers unaffected
 
 events: # optional; a design with no event generates nothing either way
-  targets: # one row per language; omitted, a design with events gets this Go row
+  targets: # one row per language; omitted, a design with events gets this Go row; [] generates none
     - lang: go
       out: ./internal/events # "-" skips the target
 
 proto: # read only when the design folder holds .proto files
-  includes: [] # extra import roots for protos you import but do not own
+  includes: [] # extra import roots for protos you import but do not own; only read, so they may lie outside the project
   plugins:
     go: "" # empty: `go tool protoc-gen-go`
     goGrpc: "" # empty: `go tool protoc-gen-go-grpc`
@@ -612,17 +612,17 @@ openapi:
       bearerFormat: JWT
 ```
 
-All `output.*` paths resolve against the **project root** (the design folder's parent, or `-c`; the module path comes from the nearest `go.mod` at or above it). Override any of them to relocate the corresponding artifact. `"-"` turns off `output.main`, `output.openapi` and `output.pb` (and an event target's `out`); on any other key it is an error: `craftgo: output.types cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`. Quote it, as a bare `-` is YAML's list marker. Setting `main: "-"` also skips `config/` and `svccontext/svccontext.go`, which gen notes is yours to write; the middleware scaffolds and `svccontext/middlewares.go` are still generated.
+All `output.*` paths resolve against the **project root** (the design folder's parent, or `-c`; the module path comes from the nearest `go.mod` at or above it) and must stay inside it; a backslash reads as a slash on every OS. Override any of them to relocate the corresponding artifact. `"-"` turns off `output.main`, `output.openapi` and `output.pb` (and an event target's `out`); on any other key it is an error: `craftgo: output.types cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`. Quote it, as a bare `-` is YAML's list marker. Setting `main: "-"` also skips `config/` and `svccontext/svccontext.go`, which gen notes is yours to write; the middleware scaffolds and `svccontext/middlewares.go` are still generated.
 
 The Go module path is **not** in this file. craftgo reads it from `go.mod` at gen time.
 
-A key the manifest does not declare is ignored: `craftgo gen` names it on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`) and generates, and the editor shows the warning on the manifest. Each removed key (`design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi`, an event target's `layout`) is an error that says what to do instead.
+A key the manifest does not declare is ignored: `craftgo gen` names it on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`) and generates, and the editor shows the warning on the manifest. Each removed key (`design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi`, an event target's `layout`) is an error that says what to do instead. A second YAML document after `---` is ignored with a warning.
 
 `output.kind: contracts` generates only what other projects import - payload types, the event library and the documents - and stops before the application half. Its defaults move out of `internal/`, which Go forbids importing across modules: `output.types: ./gen/types` and `events.targets[].out: ./gen/events`.
 
 ### Stale output is pruned
 
-A generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents - is the whole record. At the end of a run craftgo walks the output directories the manifest names, deletes every file carrying that header the run did not write, and removes the directories that leaves empty. It covers transport, routes, wiring, `svccontext/middlewares.go`, the event packages, the `output.types` folder of a DSL package the design drops, the OpenAPI document, `output.grpc`, and the pb code of the design's protos under `output.pb` (unless it is `"-"`): a file directly in a directory a design proto writes into, whose plugin header names as its source a proto no `proto.includes` root holds. A design with no proto sweeps nothing under `output.pb`. The OpenAPI document, `wiring.go`/`grpc.go` and `middlewares.go` are swept as those files alone, never another file beside or below them. Nothing is stored on the side.
+A generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents - is the whole record. At the end of a run craftgo walks the output directories the manifest names, deletes every file carrying that header the run did not write, and removes the directories that leaves empty. It covers transport, routes, wiring, `svccontext/middlewares.go`, the event packages, the `output.types` folder of a DSL package the design drops, the OpenAPI document, `output.grpc`, and the pb code of the design's protos under `output.pb` (unless it is `"-"`): a file where the plugins write the code of the proto its header names as the source, no `proto.includes` root holding it, in a directory a design proto writes into - or, in one none writes into any more, a file whose header names craftgo as the compiler (`protoc v0.0.0-craftgo`), so protoc and buf output stays. A design with no proto sweeps nothing under `output.pb`. The OpenAPI document, `wiring.go`/`grpc.go` and `middlewares.go` are swept as those files alone, never another file beside or below them. The sweep follows a link to a directory that stays inside the project root, never one leading out of it, and on a file system that folds case it never takes a file the run wrote for a stale one under another spelling. A Go event target turned off (`"-"`, `targets: []`) or moved leaves no library in its default directory (`./internal/events`, `./gen/events`): a craftgo-headed `<package>/events.go` there importing this design's `output.types` is swept. Nothing is stored on the side.
 
 - An output directory belongs to **exactly one design**. Two different designs writing into one directory delete each other's output; share contracts through an `output.kind: contracts` project the deployables import. (Two manifests generating the *same* design into one directory is fine - they write the same files.)
 - Gen-once territory is never walked: `output.service`, `output.middleware`, `output.config` and `main.go` are written only when missing, and neither those directories nor the project root is swept.
@@ -676,7 +676,7 @@ server:
 logging:
   level: info # debug | info | warn | error
 
-serviceName: my-app # go.mod module path's last element
+serviceName: my-app # go.mod module path's last element, the one before a /vN suffix
 
 otel:
   enabled: true

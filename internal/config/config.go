@@ -4,8 +4,11 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/walk"
 )
 
 // Config is the decoded `craftgo.design.yaml`.
@@ -175,6 +179,12 @@ func defaultEventTargets(kind string) []EventTarget {
 	return []EventTarget{{Lang: LangGo, Out: "./internal/events"}}
 }
 
+// DefaultEventDirs lists the directories the Go event target takes by default,
+// for one project kind or the other.
+func DefaultEventDirs() []string {
+	return []string{defaultEventTargets(KindApplication)[0].Out, defaultEventTargets(KindContracts)[0].Out}
+}
+
 // Enabled reports whether the target is generated; "-" skips it.
 func (t EventTarget) Enabled() bool { return t.Out != Disabled && t.Out != "" }
 
@@ -270,7 +280,11 @@ func IsDesignFile(path string) bool {
 
 // Find walks up from start until a directory, or one of its direct
 // subdirectories, holds a [Filename]; several such subdirectories are an error.
-// It returns the loaded config and the absolute project root and design folder.
+// It probes the subdirectories a design walk enters, links to directories
+// included, and stops at the first directory that holds go.mod or is a
+// version-control root, so a design of an enclosing module or repository is
+// never picked up. It returns the loaded config and the absolute project root
+// and design folder.
 func Find(start string) (*Config, string, string, error) {
 	abs, err := filepath.Abs(start)
 	if err != nil {
@@ -278,27 +292,40 @@ func Find(start string) (*Config, string, string, error) {
 	}
 	dir := abs
 	for {
-		if path := filepath.Join(dir, Filename); fileExists(path) {
+		path := filepath.Join(dir, Filename)
+		found, err := manifestAt(path)
+		if err != nil {
+			return nil, "", "", err
+		}
+		if found {
 			cfg, err := Load(path)
 			if err != nil {
 				return nil, "", "", err
 			}
 			return cfg, filepath.Dir(dir), dir, nil
 		}
-		if matches, err := probeDesignSubdirs(dir); err == nil {
-			switch len(matches) {
-			case 1:
-				designDir := matches[0]
-				cfg, err := Load(filepath.Join(designDir, Filename))
-				if err != nil {
-					return nil, "", "", err
-				}
-				return cfg, dir, designDir, nil
-			case 0:
-				// keep walking up
-			default:
-				return nil, "", "", fmt.Errorf("multiple craftgo.design.yaml found under %s (%d matches); pass -f to disambiguate", dir, len(matches))
+		matches, err := probeDesignSubdirs(dir)
+		if err != nil {
+			return nil, "", "", err
+		}
+		switch len(matches) {
+		case 0:
+		case 1:
+			designDir := matches[0]
+			cfg, err := Load(filepath.Join(designDir, Filename))
+			if err != nil {
+				return nil, "", "", err
 			}
+			return cfg, dir, designDir, nil
+		default:
+			return nil, "", "", fmt.Errorf("multiple craftgo.design.yaml found under %s (%d matches); pass -f to disambiguate", dir, len(matches))
+		}
+		if bound := walkUpBound(dir); bound != "" {
+			where := abs + " or a directory above it up to " + dir
+			if dir == abs {
+				where = abs
+			}
+			return nil, "", "", fmt.Errorf("craftgo.design.yaml not found in %s, which %s, nor in a direct subdirectory - pass -f to name the design folder", where, bound)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -306,6 +333,20 @@ func Find(start string) (*Config, string, string, error) {
 		}
 		dir = parent
 	}
+}
+
+// walkUpBound says why [Find] stops at dir - it holds go.mod, or is the root
+// of a repository - or is "" when the walk goes on.
+func walkUpBound(dir string) string {
+	if info, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && !info.IsDir() {
+		return "holds go.mod"
+	}
+	for _, vcs := range []string{".git", ".hg", ".svn"} {
+		if _, err := os.Stat(filepath.Join(dir, vcs)); err == nil {
+			return "is the root of a repository (" + vcs + ")"
+		}
+	}
+	return ""
 }
 
 // FindAt loads the manifest in designFolder and returns it with the absolute
@@ -316,7 +357,11 @@ func FindAt(designFolder string) (*Config, string, string, error) {
 		return nil, "", "", err
 	}
 	manifest := filepath.Join(absDesign, Filename)
-	if !fileExists(manifest) {
+	found, err := manifestAt(manifest)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if !found {
 		return nil, "", "", fmt.Errorf("craftgo.design.yaml not found in %s", absDesign)
 	}
 	cfg, err := Load(manifest)
@@ -326,34 +371,49 @@ func FindAt(designFolder string) (*Config, string, string, error) {
 	return cfg, filepath.Dir(absDesign), absDesign, nil
 }
 
-// probeDesignSubdirs returns the direct subdirectories of dir that hold a
-// [Filename], skipping hidden ones, `vendor` and `node_modules`.
+// probeDesignSubdirs returns the direct subdirectories of dir, or links to
+// directories, that hold a [Filename], skipping those [walk.SkipDesignDir]
+// names. A dir it cannot read holds none.
 func probeDesignSubdirs(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
 	var out []string
 	for _, e := range entries {
-		if !e.IsDir() {
+		sub := filepath.Join(dir, e.Name())
+		if walk.SkipDesignDir(e.Name()) || !isDir(sub) {
 			continue
 		}
-		name := e.Name()
-		if name == "" || name[0] == '.' || name == "node_modules" || name == "vendor" {
-			continue
+		found, err := manifestAt(filepath.Join(sub, Filename))
+		if err != nil {
+			return nil, err
 		}
-		path := filepath.Join(dir, name, Filename)
-		if fileExists(path) {
-			out = append(out, filepath.Join(dir, name))
+		if found {
+			out = append(out, sub)
 		}
 	}
 	return out, nil
 }
 
-// fileExists reports whether path exists and is not a directory.
-func fileExists(path string) bool {
+// isDir reports whether path is a directory or a link to one.
+func isDir(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
+	return err == nil && info.IsDir()
+}
+
+// manifestAt reports whether a manifest file is at path; a symbolic link
+// there that leads nowhere is an error, not an absent manifest.
+func manifestAt(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&os.ModeSymlink != 0 && errors.Is(err, fs.ErrNotExist) {
+		target, _ := os.Readlink(path)
+		return false, fmt.Errorf("%s is a symbolic link to %s, which does not exist", path, target)
+	}
+	return false, nil
 }
 
 // Load reads, validates and defaults the manifest at path. A removed key is an
@@ -363,8 +423,9 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
 	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	var cfg Config
@@ -377,6 +438,10 @@ func Load(path string) (*Config, error) {
 		}
 		cfg.Warnings = append(cfg.Warnings, key+" is not a manifest key and is ignored")
 	}
+	if laterDocument(dec) {
+		cfg.Warnings = append(cfg.Warnings, "the YAML document after `---` is ignored - the manifest is its first document")
+	}
+	cfg.normalizePaths()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -389,6 +454,41 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// laterDocument reports whether dec, past the manifest's first document, holds
+// another with content, or one it cannot parse; a bare `---` or `...` at the
+// end holds none.
+func laterDocument(dec *yaml.Decoder) bool {
+	for {
+		var doc yaml.Node
+		err := dec.Decode(&doc)
+		if errors.Is(err, io.EOF) {
+			return false
+		}
+		if err != nil {
+			return true
+		}
+		if len(doc.Content) > 0 && doc.Content[0].Tag != "!!null" {
+			return true
+		}
+	}
+}
+
+// normalizePaths spells every path the manifest names with forward slashes,
+// whatever the OS, so the files gen writes, the import paths it derives and
+// main.go's go:embed agree on a manifest written on Windows.
+func (c *Config) normalizePaths() {
+	for _, k := range outputKeys {
+		p := k.field(&c.Output)
+		*p = toSlash(*p)
+	}
+	for i := range c.Events.Targets {
+		c.Events.Targets[i].Out = toSlash(c.Events.Targets[i].Out)
+	}
+	for i := range c.Proto.Includes {
+		c.Proto.Includes[i] = toSlash(c.Proto.Includes[i])
+	}
 }
 
 // removedKeys are the keys the manifest no longer reads, each with what took
@@ -483,13 +583,10 @@ func (c *Config) validate() error {
 			return err
 		}
 	}
+	// An include root is only read, so it may sit outside the project.
 	for i, inc := range c.Proto.Includes {
-		key := fmt.Sprintf("proto.includes[%d]", i)
 		if inc == "" || inc == Disabled {
-			return fmt.Errorf("%s: an include names a directory", key)
-		}
-		if err := checkWithinProject(key, inc); err != nil {
-			return err
+			return fmt.Errorf("proto.includes[%d]: an include names a directory", i)
 		}
 	}
 	for _, t := range c.Events.Targets {
@@ -539,7 +636,8 @@ func (c *Config) applyDefaults() {
 	if c.Output.FileCase == "" {
 		c.Output.FileCase = idents.DefaultFileCase
 	}
-	if len(c.Events.Targets) == 0 {
+	// `targets: []` asks for no target; only an absent list takes the default.
+	if c.Events.Targets == nil {
 		c.Events.Targets = defaultEventTargets(c.Output.Kind)
 	}
 }
@@ -704,13 +802,15 @@ func (k outputKey) dir(val string) string {
 // toSlash replaces every backslash with a slash, whatever the OS.
 func toSlash(val string) string { return strings.ReplaceAll(val, "\\", "/") }
 
-// checkWithinProject rejects a path outside the project root; "" and "-" pass.
+// checkWithinProject rejects an output path outside the project root, a
+// Windows drive path included; "" and "-" pass.
 func checkWithinProject(key, val string) error {
 	if val == "" || val == Disabled {
 		return nil
 	}
 	clean := path.Clean(toSlash(val))
-	if clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
+	drive := len(clean) >= 2 && clean[1] == ':' && ('a' <= clean[0] && clean[0] <= 'z' || 'A' <= clean[0] && clean[0] <= 'Z')
+	if clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) || drive {
 		return fmt.Errorf("%s %q must stay inside the project - generated code is imported as `<module>/<path>`, which cannot name a directory outside the module", key, val)
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -77,6 +78,7 @@ func OutputNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Co
 	out = append(out, staleWiringImport(cfg, projectRoot)...)
 	out = append(out, scaffoldGapNotes(proj, protos, cfg, projectRoot)...)
 	out = append(out, orphanedStubNotes(proj, protos, cfg, projectRoot)...)
+	out = append(out, recasedMiddlewareNotes(proj, cfg, projectRoot)...)
 	return append(out, protoWarnings(protos)...)
 }
 
@@ -92,19 +94,64 @@ func protoWarnings(protos *protodesign.Set) []string {
 	return out
 }
 
+// fileCases lists every output.fileCase, for the notes on what another one named.
+var fileCases = []string{idents.FileCaseSnake, idents.FileCaseKebab, idents.FileCaseCamel}
+
+// recasedMiddlewareNotes names each middleware scaffold left under the file name another
+// output.fileCase gives it: beside the one scaffolded now, the package declares its constructor
+// twice.
+func recasedMiddlewareNotes(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
+	if proj == nil || cfg.Output.ContractsOnly() {
+		return nil
+	}
+	dir := outputsOf(cfg).middleware
+	var out []string
+	for _, mw := range projectMiddlewares(proj) {
+		now := idents.MiddlewareFileName(mw.Name, cfg.Output.FileCase) + ".go"
+		seen := map[string]bool{now: true}
+		for _, fileCase := range fileCases {
+			old := idents.MiddlewareFileName(mw.Name, fileCase) + ".go"
+			if seen[old] || !fileHasPrefix(dir.at(projectRoot, old), scaffoldHeader) {
+				continue
+			}
+			seen[old] = true
+			out = append(out, cfg.Output.Middleware+"/"+old+" holds the "+mw.Name+" middleware scaffold under the name output.fileCase used to give it, beside "+
+				now+" - move your code over and delete it, as the package declares New"+mw.Name+"Middleware twice until then")
+		}
+	}
+	return out
+}
+
 // orphanedStubNotes names the output.service directories whose HTTP or gRPC service the design no
-// longer declares; the stubs are never swept, but the generated code they import is.
+// longer declares, or names under another output.fileCase; the stubs are never swept, but the
+// generated code they import is.
 func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	if cfg.Output.ContractsOnly() {
 		return nil
 	}
 	owned := map[string]bool{}
+	// recased maps a directory a declared service's stubs take under another file case to the
+	// service and the directory they take now.
+	type place struct{ svc, dir string }
+	recased := map[string]place{}
+	own := func(svc, dir string) {
+		owned[dir] = true
+		for _, fileCase := range fileCases {
+			if old := idents.FileName(svc, fileCase); old != dir {
+				recased[old] = place{svc, dir}
+			}
+		}
+	}
 	for s := range projectSegments(proj, cfg.Output.FileCase) {
-		owned[s.dir] = true
+		if s.group != "" {
+			owned[s.dir] = true
+			continue
+		}
+		own(s.name, s.dir)
 	}
 	if protos != nil {
 		for _, svc := range protos.Services {
-			owned[svc.Dir] = true
+			own(svc.Name, svc.Dir)
 		}
 	}
 	root := outputsOf(cfg).service.at(projectRoot)
@@ -124,13 +171,18 @@ func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *con
 	})
 	var out []string
 	for _, dir := range slices.Sorted(maps.Keys(orphaned)) {
+		if now, ok := recased[dir]; ok {
+			out = append(out, cfg.Output.Service+"/"+dir+" holds the logic stubs of "+now.svc+", which output.fileCase now places in "+
+				cfg.Output.Service+"/"+now.dir+" - gen scaffolded fresh stubs there, so move your logic over and delete the old directory")
+			continue
+		}
 		out = append(out, cfg.Output.Service+"/"+dir+" holds logic stubs of a service the design no longer declares - the generated code they import is gone, so move or delete them")
 	}
 	return out
 }
 
 // scaffoldGapNotes reports a gen-once main.go or config.go that predates the design's transports,
-// and a pb import with no .pb.go under `output.pb: "-"`.
+// gRPC or HTTP, and a pb import with no .pb.go under `output.pb: "-"`.
 func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	if cfg.Output.RuntimeDisabled() || cfg.Output.ContractsOnly() {
 		return nil
@@ -151,6 +203,10 @@ func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	}
 	if _, err := os.Stat(configPath); err == nil && protos.HasServices() && !fileMentions(configPath, "GRPCConfig") {
 		out = append(out, cfg.Output.Config+"/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)")
+	}
+	if _, err := os.Stat(configPath); err == nil && projectHasRoutes(proj) && !fileMentions(configPath, "ServerConfig") {
+		out = append(out, cfg.Output.Config+"/config.go predates the HTTP routes and has no Server or Docs config, which the HTTP listener in "+cfg.Output.Main+
+			" reads - it is generated once, so add the `server:` and `docs:` blocks by hand (docs/guide/configuration.md shows them)")
 	}
 	if protos != nil && cfg.Output.PBDisabled() {
 		for _, svc := range protos.Services {

@@ -11,6 +11,8 @@ What `craftgo gen` writes to disk, file by file. Output is **deterministic** - t
 
 The split is the core of the workflow: regenerated files are the mechanical translation of your DSL; gen-once files are where *you* live. The CLI checks for existence before writing a gen-once file, so it never clobbers your business logic.
 
+A run renders every file before it writes any. Each one is then written to a temporary file beside it and renamed into place, keeping the mode of the file it replaces, and the sweep runs last. So a run that fails - a protoc plugin that cannot run, a file it cannot write - names the cause and leaves the tree as it was, and a run cut short never leaves a half-written file behind.
+
 ## Directory layout
 
 For a project whose design declares `package design` with a `UserService`:
@@ -136,7 +138,7 @@ An RPC gets the same stub from the same template, with the pb types in the signa
 
 ### `pb/<dir>/` (plugin)
 
-The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own. The sweep deletes a file here only in a directory a design proto writes into, when its header names as its source a proto no `proto.includes` root holds; a design with no proto sweeps nothing here. `output.pb: "-"` runs no plugin.
+The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own, naming craftgo as the compiler (`protoc v0.0.0-craftgo`). The sweep deletes a file here only where the plugins write the code of the proto its header names as the source, when no `proto.includes` root holds that proto - and, in a directory no design proto writes into any more, only a file that header marks as craftgo's. A design with no proto sweeps nothing here. `output.pb: "-"` runs no plugin.
 
 ### `grpc/<svc>/` (regen)
 

@@ -21,6 +21,24 @@ func TestEventsDefaultToASingleGoTarget(t *testing.T) {
 	}
 }
 
+// An empty target list asks for no event library; only an absent one gets
+// the Go default.
+func TestEmptyEventTargetsGenerateNone(t *testing.T) {
+	for body, want := range map[string]int{
+		"events:\n  targets: []\n": 0,
+		"events:\n  targets:\n":    1,
+		"events: {}\n":             1,
+	} {
+		cfg, err := loadManifest(t, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(cfg.Events.Targets); got != want {
+			t.Errorf("%q: %d target(s), want %d", body, got, want)
+		}
+	}
+}
+
 // TestEventTargetsAreConfigured checks that TargetFor returns a configured
 // target and misses an unconfigured language.
 func TestEventTargetsAreConfigured(t *testing.T) {

@@ -1,6 +1,7 @@
 package designopts
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
 // tree writes files, keyed by relative path, under a fresh root and returns it.
@@ -97,6 +99,45 @@ func TestBothPoliciesAgreeOnAReadableTree(t *testing.T) {
 	if got := names(FilesBestEffort(root)); !reflect.DeepEqual(got, names(strict)) {
 		t.Errorf("FilesBestEffort = %v, want the same as Files (%v)", got, names(strict))
 	}
+}
+
+// A design walk reads a linked package folder, and passes over an editor's
+// lock file, a macOS AppleDouble file, an underscore file and what sits in a
+// hidden directory, vendor or node_modules.
+func TestFilesSkipArtefactsAndFollowLinks(t *testing.T) {
+	shared := tree(t, map[string]string{"users/u.craftgo": "package users\n"})
+	root := tree(t, map[string]string{
+		"orders/o.craftgo":            "package orders\n",
+		"orders/._o.craftgo":          "\x00\x05\x16\x07Mac OS X",
+		"orders/_draft.craftgo":       "package orders\n",
+		".history/orders/o.craftgo":   "package orders\n",
+		"vendor/x/x.craftgo":          "package x\n",
+		"node_modules/y/y.craftgo":    "package y\n",
+		"orders/notes/readme.md":      "",
+		"orders/notes/also.craftgo.x": "",
+	})
+	if err := os.Symlink("user@host.12345:1700000000", filepath.Join(root, "orders", ".#o.craftgo")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(shared, "users"), filepath.Join(root, "users")); err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string][]string{"Files": mustFiles(t, root), "FilesBestEffort": FilesBestEffort(root)} {
+		want := []string{filepath.Join(root, "orders", "o.craftgo"), filepath.Join(root, "users", "u.craftgo")}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// mustFiles is [Files] failing the test on error.
+func mustFiles(t *testing.T, root string) []string {
+	t.Helper()
+	paths, err := Files(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return paths
 }
 
 // TestLoadRefusesAHalfReadableDesign checks that Load fails like Files on an
@@ -311,5 +352,41 @@ func TestProtoOptionsFollowTheManifest(t *testing.T) {
 	cfg.Output.PB = "-"
 	if got := ProtoOptions(cfg, "/proj"); got.PBDir != "" {
 		t.Errorf(`pb "-" must leave PBDir empty, got %q`, got.PBDir)
+	}
+}
+
+// A design proto compiles against an include root beside the project, as
+// `proto.includes: [../shared-protos]` names it.
+func TestIncludesBesideTheProjectCompile(t *testing.T) {
+	work := tree(t, map[string]string{
+		"shared-protos/shared/money.proto":  "syntax = \"proto3\";\npackage shared;\noption go_package = \"example.com/shared/gen/shared\";\nmessage Money { int64 cents = 1; }\n",
+		"billing/design/" + config.Filename: "proto:\n  includes: [../shared-protos]\n",
+		"billing/design/billing/billing.proto": "syntax = \"proto3\";\npackage billing;\nimport \"shared/money.proto\";\n" +
+			"message Invoice { shared.Money total = 1; }\nservice Billing { rpc Get(Invoice) returns (Invoice); }\n",
+	})
+	cfg, projectRoot, designDir, err := config.FindAt(filepath.Join(work, "billing", "design"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Package = "example.com/billing"
+	set, err := protodesign.Load(context.Background(), designDir, ProtoOptions(cfg, projectRoot))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !set.HasServices() {
+		t.Error("the design's service was not compiled")
+	}
+}
+
+// An include root outside the project resolves beside it, or stays where an
+// absolute path puts it.
+func TestProtoOptionsReachIncludesOutsideTheProject(t *testing.T) {
+	work := t.TempDir()
+	shared := filepath.Join(work, "shared-protos")
+	cfg := &config.Config{Package: "example.com/billing"}
+	cfg.Proto.Includes = []string{"../shared-protos", filepath.ToSlash(shared)}
+	got := ProtoOptions(cfg, filepath.Join(work, "billing"))
+	if want := []string{shared, shared}; !reflect.DeepEqual(got.Includes, want) {
+		t.Errorf("includes = %v, want %v", got.Includes, want)
 	}
 }

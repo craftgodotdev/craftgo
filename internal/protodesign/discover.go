@@ -1,21 +1,19 @@
 package protodesign
 
 import (
-	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/craftgodotdev/craftgo/internal/walk"
 )
 
-// discover lists every `.proto` under designRoot as a sorted slash path
-// relative to it; a directory it cannot read fails the call.
+// discover lists every `.proto` a [walk.Design] walk of designRoot finds, as a
+// sorted slash path relative to it; a directory it cannot read fails the call.
 func discover(designRoot string) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(designRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".proto") {
+	err := walk.Files(designRoot, walk.Design(nil), func(path string) error {
+		if !strings.HasSuffix(path, ".proto") {
 			return nil
 		}
 		rel, err := filepath.Rel(designRoot, path)

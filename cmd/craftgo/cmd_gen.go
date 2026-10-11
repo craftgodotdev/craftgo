@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -25,9 +28,11 @@ func (t *targetList) String() string { return strings.Join(*t, ",") }
 
 func (t *targetList) Set(v string) error {
 	for name := range strings.SplitSeq(v, ",") {
-		if name = strings.TrimSpace(name); name != "" {
-			*t = append(*t, name)
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("names no target - use %s", strings.Join(codegen.SelectableTargets(), ", "))
 		}
+		*t = append(*t, name)
 	}
 	return nil
 }
@@ -76,11 +81,30 @@ func findManifest(a genArgs) (*config.Config, string, string, error) {
 		return nil, "", "", err
 	}
 	if a.context != "" {
-		if projectRoot, err = filepath.Abs(a.context); err != nil {
+		if projectRoot, err = contextRoot(a.context); err != nil {
 			return nil, "", "", err
 		}
 	}
 	return cfg, projectRoot, designDir, nil
+}
+
+// contextRoot returns the absolute project root -c names, which must be an
+// existing directory: a misspelt one would take a tree of its own.
+func contextRoot(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", fmt.Errorf("-c %s: no such directory - -c names the project root the output paths resolve against", path)
+	case err != nil:
+		return "", fmt.Errorf("-c %s: %w", path, err)
+	case !info.IsDir():
+		return "", fmt.Errorf("-c %s is a file - -c names the project root directory the output paths resolve against", path)
+	}
+	return abs, nil
 }
 
 // runGen loads the manifest, analyses the design's `.craftgo` and `.proto`
@@ -94,6 +118,7 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("craftgo: design %s, project root %s\n", designDir, projectRoot)
 	for _, w := range cfg.Warnings {
 		fmt.Fprintln(os.Stderr, "craftgo: warning: "+w)
 	}
@@ -164,8 +189,8 @@ func grpcSummary(protos *protodesign.Set, wrote bool) string {
 }
 
 // analyzeDesign parses and analyses the design files under designDir, folding
-// the errors into one. A design with no DSL package is an error unless
-// allowEmpty is set.
+// the errors into one and printing each warning to stderr. A design with no
+// DSL package is an error unless allowEmpty is set.
 func analyzeDesign(designDir string, cfg *config.Config, allowEmpty bool) (*semantic.Project, error) {
 	files, err := parseDesign(designDir, allowEmpty)
 	if err != nil {
@@ -182,6 +207,11 @@ func analyzeDesign(designDir string, cfg *config.Config, allowEmpty bool) (*sema
 		}
 	}
 	proj, diags := semantic.AnalyzeProject(files, designopts.For(designDir, cfg))
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityWarning {
+			fmt.Fprintf(os.Stderr, "%s: warning: %s\n", d.Pos, d.Msg)
+		}
+	}
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)
 	}

@@ -199,6 +199,8 @@ Gen-once files (`internal/service/`, `internal/middleware/`, `svccontext/`, `con
 
 Each `package` name becomes a separate Go package, whichever folders its files sit in; files that declare the same package share it and reference each other directly. One folder per package is the usual layout.
 
+craftgo reads every `.craftgo`, `.cg` and `.proto` file under the design folder, following links to directories - a package folder several deployables share can be linked in. Like the go command, it passes over hidden directories, `vendor` and `node_modules`, and every file whose name starts with `.` or `_`: an editor's lock file, a macOS `._` file, a draft set aside.
+
 ```
 design/
 ├── craftgo.design.yaml

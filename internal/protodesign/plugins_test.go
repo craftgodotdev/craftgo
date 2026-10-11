@@ -70,9 +70,9 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// unknownCompiler is the compiler line both plugins write when the
-// request carries no compiler version.
-var unknownCompiler = regexp.MustCompile(`protoc\s+\(unknown\)`)
+// craftgoCompiler is the compiler line both plugins write for craftgo's
+// request, the same on every machine.
+var craftgoCompiler = regexp.MustCompile(`protoc\s+` + regexp.QuoteMeta(compiler) + `\n`)
 
 func TestRunPluginsWritesThePredictedFiles(t *testing.T) {
 	project := workspaceProject(t)
@@ -106,8 +106,8 @@ func TestRunPluginsWritesThePredictedFiles(t *testing.T) {
 		if !strings.HasPrefix(string(body), header) {
 			t.Errorf("%s opens with %q", path, strings.SplitN(string(body), "\n", 2)[0])
 		}
-		if !unknownCompiler.Match(body) {
-			t.Errorf("%s carries a compiler version, which would differ between machines", path)
+		if !craftgoCompiler.Match(body) {
+			t.Errorf("%s does not name craftgo as its compiler", path)
 		}
 	}
 	grpc, _ := os.ReadFile(filepath.Join(pbRoot, "greet", "greet_grpc.pb.go"))

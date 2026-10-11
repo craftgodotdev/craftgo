@@ -196,7 +196,7 @@ func (c *projectChecks) reportGroupMemberCollisions(seg string, occs []segClaim)
 				pos: o.member.pos,
 				msg: fmt.Sprintf(
 					"%s %q of service %q collides with another service's %s of the same name in shared output directory %q - stubs are one file per member and the generated function is named after it, so both would claim %s.go and declare the same function; rename one or split the group",
-					o.member.kind, name, o.claim.svc, o.member.kind, seg, name),
+					o.member.kind, name, o.claim.svc, o.member.kind, seg, idents.FileName(name, c.fileCase)),
 				note: fmt.Sprintf("also declared by service %q, which emits here (%s)", o.claim.svc, claimSource(o.claim.group)),
 			}
 		}

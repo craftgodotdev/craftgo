@@ -69,6 +69,7 @@ service UserService {
 
 ```bash
 $ craftgo gen design
+craftgo: design /path/to/hello/design, project root /path/to/hello
 craftgo: generated 1 package(s) under /path/to/hello
 ```
 

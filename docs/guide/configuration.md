@@ -64,11 +64,11 @@ openapi:
       bearerFormat: JWT
 ```
 
-A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`); the editor shows the same warning on `craftgo.design.yaml`. A removed key - `design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi` or `events.targets[].layout` - is an error that names what replaced it.
+A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`); the editor shows the same warning on `craftgo.design.yaml`. A removed key - `design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi` or `events.targets[].layout` - is an error that names what replaced it. The manifest is the file's first YAML document: a second one, after a `---` line, is ignored with a warning.
 
 ### `output.*` paths
 
-All paths are relative to the **project root** (the parent of the design folder, or `-c`). Override any of them to relocate the corresponding artifact.
+All paths are relative to the **project root** (the parent of the design folder, or `-c`), and must stay inside it. Override any of them to relocate the corresponding artifact. A backslash reads as a slash on every OS, so a manifest written on Windows (`.\internal\types`) generates the same project anywhere.
 
 | Key          | Default                              | Kind                | Holds                                                     |
 | ------------ | ------------------------------------ | ------------------- | --------------------------------------------------------- |
@@ -110,7 +110,14 @@ events:
 Omit the block entirely and a design that declares events gets one Go target at
 `./internal/events` - `./gen/events` under `output.kind: contracts`, whose
 output is imported from other modules; a design that declares none generates
-nothing either way. Set a target's `out` to `"-"` to skip it.
+nothing either way. `targets: []` names no target, so nothing is generated. Set
+a target's `out` to `"-"` to skip it.
+
+Turning the Go target off, or moving it, sweeps the event library it left in a
+default directory, `./internal/events` or `./gen/events`: each
+`<package>/events.go` there carrying the generated header and importing this
+design's `output.types`, so another design's library stays. A library left in a
+directory of your own choosing is not tracked - delete it by hand.
 
 Transport and codec are deliberately absent: they are runtime wiring chosen in
 `main.go`, not design-time facts. See [Events](/guide/events).
@@ -121,7 +128,7 @@ Read only when the design folder holds `.proto` files - see [gRPC](/guide/grpc).
 
 | Key                | Default | Meaning                                                                                          |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
-| `includes`         | `[]`    | Extra import roots, relative to the project root, for protos the design imports but does not own. Each file found there must carry `option go_package`. The design folder is always the first import root. |
+| `includes`         | `[]`    | Extra import roots for protos the design imports but does not own, relative to the project root or absolute. craftgo only reads them, so they may lie outside the project - `../shared-protos` beside it, say. Each file found there must carry `option go_package`. The design folder is always the first import root. |
 | `plugins.go`       | `""`    | The `protoc-gen-go` command. Empty runs `go tool protoc-gen-go`, pinned by the `tool` directive in `go.mod`. A bare name is looked up on `PATH`, a path is run as given. |
 | `plugins.goGrpc`   | `""`    | The `protoc-gen-go-grpc` command, same rules.                                                     |
 
@@ -145,7 +152,11 @@ output:
 It affects **on-disk names only**. URL routes are unaffected (they come from
 `@prefix` and the method path), Go package names and identifiers are unchanged,
 and the `types/<package>/` layout - named after the DSL package - is untouched.
-A `@group` directory keeps the exact group string you wrote.
+A `@group` directory keeps the exact group string you wrote. Changing it in a
+project that has generated before scaffolds the gen-once stubs anew under the
+new names; gen names each `output.service` directory still holding the old
+ones, with the service it belongs to, and each middleware scaffold left under
+its old name, for you to move your code from.
 
 ### Customizing paths
 
@@ -219,7 +230,9 @@ It covers every output the run regenerates, not just the event contracts: the tr
 
 The OpenAPI document, `wiring.go` and `grpc.go`, and `middlewares.go` are swept as those files alone, never another file beside or below them: a frozen copy of the document or a docs site under `docs/` stays, even in a directory a Go output shares, while a document the run no longer writes, for a design left with no DSL package, goes.
 
-Under `output.pb` a plugin's header is not enough, since your own protoc output may sit there too: the sweep takes a file only from a directory a design proto writes into, and only when its header names as its source a proto no `proto.includes` root holds. A design with no proto sweeps nothing there, so the pb code of a project's last proto stays until you delete it.
+The sweep follows a link to a directory as long as it stays inside the project root - an output directory may be one - and never one that leads out of it. A file the run wrote is never taken for a stale one under another spelling: on a file system that folds case, as macOS and Windows do by default, a `@group` renamed in case only keeps its old spelling on disk, and the files the run wrote there stay.
+
+Under `output.pb` a plugin's header is not enough, since your own protoc output may sit there too: the sweep takes a file only where the plugins write the code of the proto its header names as the source, and only when no `proto.includes` root holds that proto. In a directory a design proto writes into, that is all. In one no design proto writes into any more - its protos moved or deleted - the header must also name craftgo as the compiler, `protoc v0.0.0-craftgo`, which is what craftgo has the plugins print: protoc's and buf's output there stays. A design with no proto sweeps nothing there, so the pb code of a project's last proto stays until you delete it.
 
 Three rules follow, and all three are load-bearing:
 
@@ -405,8 +418,9 @@ The top-level `serviceName` is the `service.name` both signals report under -
 what a backend keys on to tell one service's telemetry from another's. Each
 block can override it, but only do that to report under a different name on
 purpose. The generated `config.go` fills a blank `serviceName` with the last
-segment of the project's import path, so a generated project always reports a
-name; a `telemetry.Config` built without it, and with none of the three set,
+segment of the project's import path - the one before it when that is a
+major-version suffix, so `example.com/billing/v2` reports as `billing` - so a
+generated project always reports a name; a `telemetry.Config` built without it, and with none of the three set,
 falls back to the SDK's `unknown_service:<binary>`: survivable for a Prometheus
 scrape, where the target labels already identify the process, but under OTLP
 push every service in the fleet arrives at the collector under that one name.
