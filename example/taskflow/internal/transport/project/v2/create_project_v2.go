@@ -9,7 +9,6 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/project/v2"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
@@ -22,10 +21,6 @@ func CreateProjectV2(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.CreateProjectV2Req
-		{
-			__d := shared.HexColor("#3b82f6")
-			req.Color = &__d
-		}
 		var _b createProjectV2reqWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

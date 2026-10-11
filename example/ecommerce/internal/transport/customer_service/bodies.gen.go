@@ -16,8 +16,8 @@ type createCustomerReqWire struct {
 	Bio            *string        `json:"bio"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createCustomerReqWire) to(dst *types.CreateCustomerReq) string {
 	if w.Email == nil {
 		return "email"
@@ -52,8 +52,8 @@ type addressWire struct {
 	Geo        *geocodeWire        `json:"geo"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *addressWire) to(dst *types.Address) string {
 	if w.Street == nil {
 		return "street"
@@ -90,8 +90,8 @@ type geocodeWire struct {
 	CapturedAt *string           `json:"capturedAt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *geocodeWire) to(dst *types.Geocode) string {
 	if w.Lat == nil {
 		return "lat"

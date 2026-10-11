@@ -14,8 +14,8 @@ type userWire struct {
 	Boss  *userWire    `json:"boss"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *userWire) to(dst *types.User) string {
 	if w.Addr == nil {
 		return "addr"
@@ -40,8 +40,8 @@ type addressWire struct {
 	City   *string `json:"city"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *addressWire) to(dst *types.Address) string {
 	if w.Street == nil {
 		return "street"
@@ -59,8 +59,8 @@ type personWire struct {
 	Home *homeWire `json:"home"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *personWire) to(dst *types.Person) string {
 	if w.Home == nil {
 		return "home"
@@ -76,8 +76,8 @@ type homeWire struct {
 	Rooms []roomWire `json:"rooms"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *homeWire) to(dst *types.Home) string {
 	if w.Rooms == nil {
 		return "rooms"
@@ -96,8 +96,8 @@ type roomWire struct {
 	Furniture []furnitureWire `json:"furniture"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *roomWire) to(dst *types.Room) string {
 	if w.Furniture == nil {
 		return "furniture"
@@ -117,8 +117,8 @@ type furnitureWire struct {
 	Weight *int    `json:"weight"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *furnitureWire) to(dst *types.Furniture) string {
 	if w.Name == nil {
 		return "name"
@@ -136,8 +136,8 @@ type teamWire struct {
 	Members []userWire `json:"members"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *teamWire) to(dst *types.Team) string {
 	if w.Members == nil {
 		return "members"
@@ -156,8 +156,8 @@ type orgWire struct {
 	Teams []teamWire `json:"teams"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *orgWire) to(dst *types.Org) string {
 	if w.Teams != nil {
 		dst.Teams = make([]types.Team, len(w.Teams))
@@ -175,8 +175,8 @@ type catalogWire struct {
 	Users map[string]userWire `json:"users"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *catalogWire) to(dst *types.Catalog) string {
 	if w.Users == nil {
 		return "users"
@@ -197,8 +197,8 @@ type matrixWire struct {
 	Grid [][]nodeWire `json:"grid"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *matrixWire) to(dst *types.Matrix) string {
 	if w.Grid == nil {
 		return "grid"
@@ -223,8 +223,8 @@ type nodeWire struct {
 	Children []nodeWire `json:"children"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *nodeWire) to(dst *types.Node) string {
 	if w.ID == nil {
 		return "id"
@@ -247,8 +247,8 @@ type cubeWire struct {
 	Space [][][]nodeWire `json:"space"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *cubeWire) to(dst *types.Cube) string {
 	if w.Space == nil {
 		return "space"
@@ -278,8 +278,8 @@ type aWire struct {
 	B  *bWire  `json:"b"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *aWire) to(dst *types.A) string {
 	if w.ID == nil {
 		return "id"
@@ -300,8 +300,8 @@ type bWire struct {
 	A  *aWire  `json:"a"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *bWire) to(dst *types.B) string {
 	if w.ID == nil {
 		return "id"
@@ -322,8 +322,8 @@ type listPageWire struct {
 	Meta  *addressWire `json:"meta"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *listPageWire) to(dst *types.ListPage) string {
 	if w.Items == nil {
 		return "items"
@@ -348,8 +348,8 @@ type orderWire struct {
 	ID *string `json:"id"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *orderWire) to(dst *types.Order) string {
 	if w.ID == nil {
 		return "id"
@@ -364,8 +364,8 @@ type auditedHostWire struct {
 	Name *string `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *auditedHostWire) to(dst *types.AuditedHost) string {
 	if _p := w.createdAuditWire.to(&dst.CreatedAudit); _p != "" {
 		return _p
@@ -382,8 +382,8 @@ type createdAuditWire struct {
 	CreatedAt *string `json:"createdAt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createdAuditWire) to(dst *types.CreatedAudit) string {
 	if w.CreatedAt == nil {
 		return "createdAt"
@@ -397,8 +397,8 @@ type responseAuditWire struct {
 	CreatedAt *string `json:"createdAt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *responseAuditWire) to(dst *types.ResponseAudit) string {
 	if w.CreatedAt == nil {
 		return "createdAt"

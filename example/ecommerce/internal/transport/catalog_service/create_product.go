@@ -9,7 +9,6 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/catalog_service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
-	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
@@ -22,10 +21,6 @@ func CreateProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.CreateProductReq
-		{
-			__d := shared.CurrencyCode("USD")
-			req.Currency = &__d
-		}
 		var _b createProductReqWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

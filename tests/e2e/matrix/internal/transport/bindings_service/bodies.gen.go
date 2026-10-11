@@ -11,8 +11,8 @@ type pagedSearchReqWire struct {
 	Term *string `json:"term"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pagedSearchReqWire) to(dst *types.PagedSearchReq) string {
 	if w.Term == nil {
 		return "term"
@@ -28,8 +28,8 @@ type addItemReqWire struct {
 	Notes *string `json:"notes"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *addItemReqWire) to(dst *types.AddItemReq) string {
 	if w.Name == nil {
 		return "name"
@@ -49,8 +49,8 @@ type mixinWireBodyReqWire struct {
 	Name *string `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mixinWireBodyReqWire) to(dst *types.MixinWireBodyReq) string {
 	if _p := w.bodyMixinWire.to(&dst.BodyMixin); _p != "" {
 		return _p
@@ -67,8 +67,8 @@ type bodyMixinWire struct {
 	Note *string `json:"note"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *bodyMixinWire) to(dst *types.BodyMixin) string {
 	if w.Note == nil {
 		return "note"
@@ -82,8 +82,8 @@ type mixinBodyReqWire struct {
 	bodyOnlyMixinWire
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mixinBodyReqWire) to(dst *types.MixinBodyReq) string {
 	if _p := w.bodyOnlyMixinWire.to(&dst.BodyOnlyMixin); _p != "" {
 		return _p
@@ -96,8 +96,8 @@ type bodyOnlyMixinWire struct {
 	CreatedAt *string `json:"createdAt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *bodyOnlyMixinWire) to(dst *types.BodyOnlyMixin) string {
 	if w.CreatedAt == nil {
 		return "createdAt"
@@ -111,8 +111,8 @@ type queryBesideBodyReqWire struct {
 	Payload *string `json:"payload"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *queryBesideBodyReqWire) to(dst *types.QueryBesideBodyReq) string {
 	if w.Payload == nil {
 		return "payload"
@@ -127,8 +127,8 @@ type countsPayloadWire struct {
 	Name   *string         `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *countsPayloadWire) to(dst *types.CountsPayload) string {
 	if w.Counts == nil {
 		return "counts"

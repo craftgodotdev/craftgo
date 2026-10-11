@@ -13,8 +13,8 @@ type counterReqWire struct {
 	Body *numberCounterWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *counterReqWire) to(dst *types.CounterReq) string {
 	if w.Body == nil {
 		return "body"
@@ -51,8 +51,8 @@ type numberCounterWire struct {
 	TightInt64  *int64 `json:"tightInt64"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberCounterWire) to(dst *types.NumberCounter) string {
 	if w.RangeInt == nil {
 		return "rangeInt"
@@ -150,8 +150,8 @@ type unsignedReqWire struct {
 	Body *numberUnsignedWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *unsignedReqWire) to(dst *types.UnsignedReq) string {
 	if w.Body == nil {
 		return "body"
@@ -185,8 +185,8 @@ type numberUnsignedWire struct {
 	FloorUint64  *uint64 `json:"floorUint64"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberUnsignedWire) to(dst *types.NumberUnsigned) string {
 	if w.RangeUint == nil {
 		return "rangeUint"
@@ -272,8 +272,8 @@ type priceReqWire struct {
 	Body *numberPriceWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *priceReqWire) to(dst *types.PriceReq) string {
 	if w.Body == nil {
 		return "body"
@@ -300,8 +300,8 @@ type numberPriceWire struct {
 	TinyF64   *float64 `json:"tinyF64"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberPriceWire) to(dst *types.NumberPrice) string {
 	if w.RangeF32 == nil {
 		return "rangeF32"
@@ -359,8 +359,8 @@ type optionalReqWire struct {
 	Body *numberOptionalWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *optionalReqWire) to(dst *types.OptionalReq) string {
 	if w.Body == nil {
 		return "body"
@@ -379,13 +379,13 @@ type numberOptionalWire struct {
 	NullableInt   server.Nullable[int]     `json:"nullableInt"`
 	NullableFloat server.Nullable[float64] `json:"nullableFloat"`
 	MaybeInt      *int                     `json:"maybeInt"`
-	DefaultInt    server.Nullable[int]     `json:"defaultInt"`
-	DefaultFloat  server.Nullable[float64] `json:"defaultFloat"`
-	DefaultStep   server.Nullable[int]     `json:"defaultStep"`
+	DefaultInt    *int                     `json:"defaultInt"`
+	DefaultFloat  *float64                 `json:"defaultFloat"`
+	DefaultStep   *int                     `json:"defaultStep"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberOptionalWire) to(dst *types.NumberOptional) string {
 	dst.OptInt = w.OptInt
 	dst.OptFloat = w.OptFloat
@@ -403,21 +403,21 @@ func (w *numberOptionalWire) to(dst *types.NumberOptional) string {
 		dst.NullableFloat = _v
 	}
 	dst.MaybeInt = w.MaybeInt
-	if _v := w.DefaultInt.Value(); _v != nil {
-		dst.DefaultInt = _v
-	} else if !w.DefaultInt.Present() {
+	if w.DefaultInt != nil {
+		dst.DefaultInt = w.DefaultInt
+	} else {
 		_d := 42
 		dst.DefaultInt = &_d
 	}
-	if _v := w.DefaultFloat.Value(); _v != nil {
-		dst.DefaultFloat = _v
-	} else if !w.DefaultFloat.Present() {
+	if w.DefaultFloat != nil {
+		dst.DefaultFloat = w.DefaultFloat
+	} else {
 		_d := 3.14
 		dst.DefaultFloat = &_d
 	}
-	if _v := w.DefaultStep.Value(); _v != nil {
-		dst.DefaultStep = _v
-	} else if !w.DefaultStep.Present() {
+	if w.DefaultStep != nil {
+		dst.DefaultStep = w.DefaultStep
+	} else {
 		_d := 10
 		dst.DefaultStep = &_d
 	}
@@ -429,8 +429,8 @@ type mixedReqWire struct {
 	Body *numberMixedWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mixedReqWire) to(dst *types.MixedReq) string {
 	if w.Body == nil {
 		return "body"
@@ -450,8 +450,8 @@ type numberMixedWire struct {
 	FloatGtLte *float64 `json:"floatGtLte"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberMixedWire) to(dst *types.NumberMixed) string {
 	if w.GtLte == nil {
 		return "gtLte"
@@ -481,8 +481,8 @@ type exactReqWire struct {
 	Body *numberExactWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *exactReqWire) to(dst *types.ExactReq) string {
 	if w.Body == nil {
 		return "body"
@@ -500,8 +500,8 @@ type numberExactWire struct {
 	ExactlyHalf *float64 `json:"exactlyHalf"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberExactWire) to(dst *types.NumberExact) string {
 	if w.Exactly5 == nil {
 		return "exactly5"
@@ -523,8 +523,8 @@ type boundaryReqWire struct {
 	Body *numberBoundaryWire `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *boundaryReqWire) to(dst *types.BoundaryReq) string {
 	if w.Body == nil {
 		return "body"
@@ -547,8 +547,8 @@ type numberBoundaryWire struct {
 	Uint32full *uint32 `json:"uint32Full"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberBoundaryWire) to(dst *types.NumberBoundary) string {
 	if w.Int8full == nil {
 		return "int8Full"
@@ -592,8 +592,8 @@ type numberBigBoundsWire struct {
 	Small  *int   `json:"small"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberBigBoundsWire) to(dst *types.NumberBigBounds) string {
 	if w.MinID == nil {
 		return "minId"
@@ -615,8 +615,8 @@ type numberMultipleOfWire struct {
 	Qty *int `json:"qty"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberMultipleOfWire) to(dst *types.NumberMultipleOf) string {
 	if w.Qty == nil {
 		return "qty"
@@ -630,8 +630,8 @@ type numberBigMultipleOfWire struct {
 	N *int64 `json:"n"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *numberBigMultipleOfWire) to(dst *types.NumberBigMultipleOf) string {
 	if w.N == nil {
 		return "n"

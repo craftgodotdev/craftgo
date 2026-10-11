@@ -21,10 +21,6 @@ func Echo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.Str_EchoReq
-		{
-			__d := "hello"
-			req.Greeting = &__d
-		}
 		var _b strEchoReqWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

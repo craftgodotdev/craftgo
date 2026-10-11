@@ -21,12 +21,13 @@ func EchoEnum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.DefaultsEnum
-		{
-			__d := types.ColorRed
-			req.C = &__d
-		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b defaultsEnumWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

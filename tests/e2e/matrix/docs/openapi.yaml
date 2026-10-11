@@ -2404,8 +2404,7 @@ components:
           optional     string?                         → *string  optional, may be omitted OR null
           nullable     string @nullable                → *string  required, value may be JSON null
           bothNullable string? @nullable               → *string  4-state (same as optional, redundant @nullable)
-          defValue     string? @default("d")           → *string  optional + pre-fill (the `?` is mandatory under @default)
-          defNullable  string? @nullable @default("d") → *string  optional + nullable + pre-fill
+          defValue     string? @default("d")           → *string  optional; absent or null takes the default (the `?` is mandatory under @default)
 
         Wire contract diffs row-by-row (OpenAPI 3.1: null rides the `type`
         list, so a nullable string is `type: [string, "null"]`):
@@ -2415,18 +2414,12 @@ components:
           nullable:     required[] yes, type: [string, "null"]
           bothNullable: required[] no,  type: [string, "null"]
           defValue:     required[] no,  type: [string, "null"], default: "d"
-          defNullable:  required[] no,  type: [string, "null"], default: "d"
 
-        The `bothNullable` and `defNullable` rows trip the "redundant
+        The `bothNullable` row trips the "redundant
         @nullable on `T?`" warning (the optionality already permits null);
         the linter should surface that without rejecting the file.
       properties:
         bothNullable:
-          type:
-          - string
-          - "null"
-        defNullable:
-          default: d
           type:
           - string
           - "null"
@@ -5785,6 +5778,11 @@ components:
             items:
               $ref: '#/components/schemas/PresenceItem'
             type: array
+          limit:
+            default: 10
+            type:
+            - integer
+            - "null"
           listed:
             $ref: '#/components/schemas/PresenceBoxOfPresenceItemArray'
           meta:
@@ -5846,8 +5844,7 @@ components:
           optional     string?                         → *string  optional, may be omitted OR null
           nullable     string @nullable                → *string  required, value may be JSON null
           bothNullable string? @nullable               → *string  4-state (same as optional, redundant @nullable)
-          defValue     string? @default("d")           → *string  optional + pre-fill (the `?` is mandatory under @default)
-          defNullable  string? @nullable @default("d") → *string  optional + nullable + pre-fill
+          defValue     string? @default("d")           → *string  optional; absent or null takes the default (the `?` is mandatory under @default)
 
         Wire contract diffs row-by-row (OpenAPI 3.1: null rides the `type`
         list, so a nullable string is `type: [string, "null"]`):
@@ -5857,18 +5854,12 @@ components:
           nullable:     required[] yes, type: [string, "null"]
           bothNullable: required[] no,  type: [string, "null"]
           defValue:     required[] no,  type: [string, "null"], default: "d"
-          defNullable:  required[] no,  type: [string, "null"], default: "d"
 
-        The `bothNullable` and `defNullable` rows trip the "redundant
+        The `bothNullable` row trips the "redundant
         @nullable on `T?`" warning (the optionality already permits null);
         the linter should surface that without rejecting the file.
       properties:
         bothNullable:
-          type:
-          - string
-          - "null"
-        defNullable:
-          default: d
           type:
           - string
           - "null"
@@ -5921,6 +5912,11 @@ components:
             items:
               $ref: '#/components/schemas/PresenceItem'
             type: array
+          limit:
+            default: 10
+            type:
+            - integer
+            - "null"
           listed:
             $ref: '#/components/schemas/PresenceBoxOfPresenceItemArray'
           meta:
@@ -7305,10 +7301,15 @@ components:
       - actual_version
       type: object
     Stamp:
-      description: Stamp is a mixin whose member the host carries as its own.
+      description: Stamp is a mixin whose members the host carries as its own.
       properties:
         by:
           type: string
+        origin:
+          default: web
+          type:
+          - string
+          - "null"
       required:
       - by
       type: object

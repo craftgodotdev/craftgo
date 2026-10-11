@@ -3,23 +3,21 @@
 package project
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 )
 
 // createProjectV2reqWire is the wire form of types.CreateProjectV2Req: each member is nil while absent or null.
 type createProjectV2reqWire struct {
-	Key         *shared.Slug                     `json:"key"`
-	Name        *string                          `json:"name"`
-	Description *string                          `json:"description"`
-	OwnerID     *shared.ID                       `json:"ownerId"`
-	Color       server.Nullable[shared.HexColor] `json:"color"`
+	Key         *shared.Slug     `json:"key"`
+	Name        *string          `json:"name"`
+	Description *string          `json:"description"`
+	OwnerID     *shared.ID       `json:"ownerId"`
+	Color       *shared.HexColor `json:"color"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createProjectV2reqWire) to(dst *types.CreateProjectV2Req) string {
 	if w.Key == nil {
 		return "key"
@@ -34,9 +32,9 @@ func (w *createProjectV2reqWire) to(dst *types.CreateProjectV2Req) string {
 		return "ownerId"
 	}
 	dst.OwnerID = *w.OwnerID
-	if _v := w.Color.Value(); _v != nil {
-		dst.Color = _v
-	} else if !w.Color.Present() {
+	if w.Color != nil {
+		dst.Color = w.Color
+	} else {
 		_d := shared.HexColor("#3b82f6")
 		dst.Color = &_d
 	}

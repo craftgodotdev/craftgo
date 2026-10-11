@@ -3,25 +3,23 @@
 package catalog
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 )
 
 // createProductReqWire is the wire form of types.CreateProductReq: each member is nil while absent or null.
 type createProductReqWire struct {
-	Sku         *shared.SKU                          `json:"sku"`
-	Name        *string                              `json:"name"`
-	Description *string                              `json:"description"`
-	PriceCents  *shared.Cents                        `json:"priceCents"`
-	Currency    server.Nullable[shared.CurrencyCode] `json:"currency"`
-	CategoryID  *shared.NonEmptyID                   `json:"categoryId"`
-	Tags        []string                             `json:"tags"`
+	Sku         *shared.SKU          `json:"sku"`
+	Name        *string              `json:"name"`
+	Description *string              `json:"description"`
+	PriceCents  *shared.Cents        `json:"priceCents"`
+	Currency    *shared.CurrencyCode `json:"currency"`
+	CategoryID  *shared.NonEmptyID   `json:"categoryId"`
+	Tags        []string             `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createProductReqWire) to(dst *types.CreateProductReq) string {
 	if w.Sku == nil {
 		return "sku"
@@ -36,9 +34,9 @@ func (w *createProductReqWire) to(dst *types.CreateProductReq) string {
 		return "priceCents"
 	}
 	dst.PriceCents = *w.PriceCents
-	if _v := w.Currency.Value(); _v != nil {
-		dst.Currency = _v
-	} else if !w.Currency.Present() {
+	if w.Currency != nil {
+		dst.Currency = w.Currency
+	} else {
 		_d := shared.CurrencyCode("USD")
 		dst.Currency = &_d
 	}

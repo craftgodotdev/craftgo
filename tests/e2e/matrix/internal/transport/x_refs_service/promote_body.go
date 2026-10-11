@@ -9,7 +9,6 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,14 +21,6 @@ func PromoteBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.XBodyPromoteReq
-		{
-			__d := xshared.XSize(20)
-			req.Size = &__d
-		}
-		{
-			__d := xshared.XColorGreen
-			req.Tone = &__d
-		}
 		var _b xBodyPromoteReqWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

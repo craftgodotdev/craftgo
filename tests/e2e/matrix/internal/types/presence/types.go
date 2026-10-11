@@ -48,6 +48,7 @@ type Order struct {
 	Listed Box[[]Item]     `json:"listed"`
 	Doc    wire.Raw        `json:"doc"`
 	Extra  any             `json:"extra,omitempty"`
+	Limit  *int            `json:"limit,omitempty"`
 }
 
 // Rename is a body beside the id its route fills.
@@ -62,9 +63,10 @@ type Spot struct {
 	Label  *string `json:"label,omitempty"`
 }
 
-// Stamp is a mixin whose member the host carries as its own.
+// Stamp is a mixin whose members the host carries as its own.
 type Stamp struct {
-	By string `json:"by"`
+	By     string  `json:"by"`
+	Origin *string `json:"origin,omitempty"`
 }
 
 // Upload is a multipart form with a required text part.

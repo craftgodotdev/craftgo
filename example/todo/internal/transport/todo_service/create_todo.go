@@ -21,10 +21,6 @@ func CreateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.CreateTodoReq
-		{
-			__d := types.TodoPriorityMedium
-			req.Priority = &__d
-		}
 		var _b createTodoReqWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

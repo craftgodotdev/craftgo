@@ -19,10 +19,6 @@ func EchoRefMeta(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.RefMeta
-		{
-			__d := types.Count(7)
-			req.RoleReq = &__d
-		}
 		var _b refMetaWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

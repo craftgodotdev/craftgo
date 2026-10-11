@@ -13,8 +13,8 @@ type createOrderReqWire struct {
 	Order *orderWire `json:"order"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createOrderReqWire) to(dst *types.CreateOrderReq) string {
 	if w.Order == nil {
 		return "order"
@@ -35,8 +35,8 @@ type orderWire struct {
 	Country *types.ISO3    `json:"country"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *orderWire) to(dst *types.Order) string {
 	if w.ID == nil {
 		return "id"
@@ -65,14 +65,33 @@ func (w *orderWire) to(dst *types.Order) string {
 	return ""
 }
 
+// searchWire is the wire form of types.Search: each member is nil while absent or null.
+type searchWire struct {
+	Keywords []types.Tag  `json:"keywords"`
+	Limit    *types.Cents `json:"limit"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *searchWire) to(dst *types.Search) string {
+	dst.Keywords = w.Keywords
+	if w.Limit != nil {
+		dst.Limit = w.Limit
+	} else {
+		_d := types.Cents(20)
+		dst.Limit = &_d
+	}
+	return ""
+}
+
 // keyedPutPriorityWire is the wire form of types.KeyedPut[types.Priority]: each member is nil while absent or null.
 type keyedPutPriorityWire struct {
 	keyMetaWire
 	Key *types.Priority `json:"key"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *keyedPutPriorityWire) to(dst *types.KeyedPut[types.Priority]) string {
 	if _p := w.keyMetaWire.to(&dst.KeyMeta); _p != "" {
 		return _p
@@ -89,8 +108,8 @@ type keyMetaWire struct {
 	Code *types.Key `json:"code"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *keyMetaWire) to(dst *types.KeyMeta) string {
 	dst.Code = w.Code
 	return ""
@@ -101,8 +120,8 @@ type echoWrappedReqWire struct {
 	Payload *wrappedWire `json:"payload"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *echoWrappedReqWire) to(dst *types.EchoWrappedReq) string {
 	if w.Payload == nil {
 		return "payload"
@@ -118,8 +137,8 @@ type wrappedWire struct {
 	Results *pageEnvelopeOrderWire `json:"results"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *wrappedWire) to(dst *types.Wrapped) string {
 	if w.Results == nil {
 		return "results"
@@ -137,8 +156,8 @@ type pageEnvelopeOrderWire struct {
 	Cursor *string             `json:"cursor"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pageEnvelopeOrderWire) to(dst *types.Page[types.Envelope[types.Order]]) string {
 	if w.Items == nil {
 		return "items"
@@ -163,8 +182,8 @@ type envelopeOrderWire struct {
 	Meta *string    `json:"meta"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *envelopeOrderWire) to(dst *types.Envelope[types.Order]) string {
 	if w.Data == nil {
 		return "data"
@@ -184,8 +203,8 @@ type nullableScalarsWire struct {
 	PlainCents *types.Count                        `json:"plainCents"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *nullableScalarsWire) to(dst *types.NullableScalars) string {
 	if !w.NulCapped.Present() {
 		return "nulCapped"
@@ -211,12 +230,12 @@ func (w *nullableScalarsWire) to(dst *types.NullableScalars) string {
 type refMetaWire struct {
 	NulInner server.Nullable[refInnerWire] `json:"nulInner"`
 	NulColor server.Nullable[types.Shade]  `json:"nulColor"`
-	RoleReq  server.Nullable[types.Count]  `json:"roleReq"`
+	RoleReq  *types.Count                  `json:"roleReq"`
 	DepColor *types.Shade                  `json:"depColor"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *refMetaWire) to(dst *types.RefMeta) string {
 	if !w.NulInner.Present() {
 		return "nulInner"
@@ -233,9 +252,9 @@ func (w *refMetaWire) to(dst *types.RefMeta) string {
 	if _v := w.NulColor.Value(); _v != nil {
 		dst.NulColor = _v
 	}
-	if _v := w.RoleReq.Value(); _v != nil {
-		dst.RoleReq = _v
-	} else if !w.RoleReq.Present() {
+	if w.RoleReq != nil {
+		dst.RoleReq = w.RoleReq
+	} else {
 		_d := types.Count(7)
 		dst.RoleReq = &_d
 	}
@@ -251,8 +270,8 @@ type refInnerWire struct {
 	ID *string `json:"id"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *refInnerWire) to(dst *types.RefInner) string {
 	if w.ID == nil {
 		return "id"
@@ -271,8 +290,8 @@ type scalarLengthsWire struct {
 	Raw      []byte         `json:"raw"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *scalarLengthsWire) to(dst *types.ScalarLengths) string {
 	if w.Code == nil {
 		return "code"
@@ -304,8 +323,8 @@ type enumKeyedMapsWire struct {
 	ByPrio  map[types.Urgency]int `json:"byPrio"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *enumKeyedMapsWire) to(dst *types.EnumKeyedMaps) string {
 	if w.ByColor == nil {
 		return "byColor"
@@ -324,8 +343,8 @@ type listingEmailAddressWire struct {
 	Total *int                 `json:"total"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *listingEmailAddressWire) to(dst *types.Listing[types.EmailAddress]) string {
 	if w.Items == nil {
 		return "items"
@@ -344,8 +363,8 @@ type genericMixinHostWire struct {
 	Name *string `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *genericMixinHostWire) to(dst *types.GenericMixinHost) string {
 	if _p := w.mixinPageMixinItemWire.to(&dst.MixinPage); _p != "" {
 		return _p
@@ -363,8 +382,8 @@ type mixinPageMixinItemWire struct {
 	Total *int            `json:"total"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mixinPageMixinItemWire) to(dst *types.MixinPage[types.MixinItem]) string {
 	if w.Items == nil {
 		return "items"
@@ -387,8 +406,8 @@ type mixinItemWire struct {
 	ID *string `json:"id"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mixinItemWire) to(dst *types.MixinItem) string {
 	if w.ID == nil {
 		return "id"
@@ -402,8 +421,8 @@ type compositeArgWire struct {
 	Page *skuPageMapStringSkuItemWire `json:"page"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *compositeArgWire) to(dst *types.CompositeArg) string {
 	if w.Page == nil {
 		return "page"
@@ -419,8 +438,8 @@ type skuPageMapStringSkuItemWire struct {
 	Items []map[string]skuItemWire `json:"items"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *skuPageMapStringSkuItemWire) to(dst *types.SkuPage[map[string]types.SkuItem]) string {
 	if w.Items == nil {
 		return "items"
@@ -446,8 +465,8 @@ type skuItemWire struct {
 	Sku *string `json:"sku"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *skuItemWire) to(dst *types.SkuItem) string {
 	if w.Sku == nil {
 		return "sku"
@@ -461,8 +480,8 @@ type boxHolderWire struct {
 	Box *arrayBoxUuidItemWire `json:"box"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *boxHolderWire) to(dst *types.BoxHolder) string {
 	if w.Box == nil {
 		return "box"
@@ -479,8 +498,8 @@ type arrayBoxUuidItemWire struct {
 	Opt []uuidItemWire `json:"opt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *arrayBoxUuidItemWire) to(dst *types.ArrayBox[types.UUIDItem]) string {
 	if w.Req == nil {
 		return "req"
@@ -507,8 +526,8 @@ type uuidItemWire struct {
 	ID *string `json:"id"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *uuidItemWire) to(dst *types.UUIDItem) string {
 	if w.ID == nil {
 		return "id"

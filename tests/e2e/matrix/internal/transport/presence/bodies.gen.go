@@ -29,10 +29,11 @@ type orderWire struct {
 	Listed *boxItemListWire          `json:"listed"`
 	Doc    wire.Raw                  `json:"doc"`
 	Extra  any                       `json:"extra"`
+	Limit  *int                      `json:"limit"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *orderWire) to(dst *types.Order) string {
 	if _p := w.stampWire.to(&dst.Stamp); _p != "" {
 		return _p
@@ -116,21 +117,34 @@ func (w *orderWire) to(dst *types.Order) string {
 	}
 	dst.Doc = w.Doc
 	dst.Extra = w.Extra
+	if w.Limit != nil {
+		dst.Limit = w.Limit
+	} else {
+		_d := 10
+		dst.Limit = &_d
+	}
 	return ""
 }
 
 // stampWire is the wire form of types.Stamp: each member is nil while absent or null.
 type stampWire struct {
-	By *string `json:"by"`
+	By     *string `json:"by"`
+	Origin *string `json:"origin"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *stampWire) to(dst *types.Stamp) string {
 	if w.By == nil {
 		return "by"
 	}
 	dst.By = *w.By
+	if w.Origin != nil {
+		dst.Origin = w.Origin
+	} else {
+		_d := "web"
+		dst.Origin = &_d
+	}
 	return ""
 }
 
@@ -140,8 +154,8 @@ type spotWire struct {
 	Label  *string     `json:"label"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *spotWire) to(dst *types.Spot) string {
 	if w.Coords == nil {
 		return "coords"
@@ -155,20 +169,20 @@ func (w *spotWire) to(dst *types.Spot) string {
 
 // coordsWire is the wire form of types.Coords: each member is nil while absent or null.
 type coordsWire struct {
-	Lat  *float64             `json:"lat"`
-	Zoom server.Nullable[int] `json:"zoom"`
+	Lat  *float64 `json:"lat"`
+	Zoom *int     `json:"zoom"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *coordsWire) to(dst *types.Coords) string {
 	if w.Lat == nil {
 		return "lat"
 	}
 	dst.Lat = *w.Lat
-	if _v := w.Zoom.Value(); _v != nil {
-		dst.Zoom = _v
-	} else if !w.Zoom.Present() {
+	if w.Zoom != nil {
+		dst.Zoom = w.Zoom
+	} else {
 		_d := 3
 		dst.Zoom = &_d
 	}
@@ -181,8 +195,8 @@ type itemWire struct {
 	Qty *int       `json:"qty"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *itemWire) to(dst *types.Item) string {
 	if w.Sku == nil {
 		return "sku"
@@ -198,8 +212,8 @@ type boxItemWire struct {
 	Opt *itemWire `json:"opt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *boxItemWire) to(dst *types.Box[types.Item]) string {
 	if w.V == nil {
 		return "v"
@@ -222,8 +236,8 @@ type boxItemListWire struct {
 	Opt *[]itemWire `json:"opt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *boxItemListWire) to(dst *types.Box[[]types.Item]) string {
 	if w.V == nil {
 		return "v"
@@ -252,8 +266,8 @@ type renameWire struct {
 	Name *string `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *renameWire) to(dst *types.Rename) string {
 	if w.Name == nil {
 		return "name"

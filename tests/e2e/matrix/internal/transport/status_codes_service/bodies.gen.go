@@ -12,8 +12,8 @@ type createJobReqWire struct {
 	Payload *string `json:"payload"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createJobReqWire) to(dst *types.CreateJobReq) string {
 	if w.Kind == nil {
 		return "kind"

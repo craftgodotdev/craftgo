@@ -22,10 +22,6 @@ func CreateTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.CreateTaskReq
-		{
-			__d := types.PriorityMedium
-			req.Priority = &__d
-		}
 		var _b createTaskReqWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

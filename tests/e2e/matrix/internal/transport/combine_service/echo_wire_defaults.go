@@ -19,16 +19,13 @@ func EchoWireDefaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.WireDefaults
-		{
-			__d := types.HueRed
-			req.C = &__d
-		}
-		{
-			__d := types.GradeHigh
-			req.L = &__d
-		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b wireDefaultsWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

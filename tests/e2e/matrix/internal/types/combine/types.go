@@ -291,8 +291,7 @@ type PairsUpload struct {
 //	optional     string?                         → *string  optional, may be omitted OR null
 //	nullable     string @nullable                → *string  required, value may be JSON null
 //	bothNullable string? @nullable               → *string  4-state (same as optional, redundant @nullable)
-//	defValue     string? @default("d")           → *string  optional + pre-fill (the `?` is mandatory under @default)
-//	defNullable  string? @nullable @default("d") → *string  optional + nullable + pre-fill
+//	defValue     string? @default("d")           → *string  optional; absent or null takes the default (the `?` is mandatory under @default)
 //
 // Wire contract diffs row-by-row (OpenAPI 3.1: null rides the `type`
 // list, so a nullable string is `type: [string, "null"]`):
@@ -302,9 +301,8 @@ type PairsUpload struct {
 //	nullable:     required[] yes, type: [string, "null"]
 //	bothNullable: required[] no,  type: [string, "null"]
 //	defValue:     required[] no,  type: [string, "null"], default: "d"
-//	defNullable:  required[] no,  type: [string, "null"], default: "d"
 //
-// The `bothNullable` and `defNullable` rows trip the "redundant
+// The `bothNullable` row trips the "redundant
 // @nullable on `T?`" warning (the optionality already permits null);
 // the linter should surface that without rejecting the file.
 type PresenceMatrix struct {
@@ -313,7 +311,6 @@ type PresenceMatrix struct {
 	Nullable     *string `json:"nullable"`
 	BothNullable *string `json:"bothNullable,omitempty"`
 	DefValue     *string `json:"defValue,omitempty"`
-	DefNullable  *string `json:"defNullable,omitempty"`
 }
 
 // PromotedContact's @requiresOneOf names the fields its mixin brings.

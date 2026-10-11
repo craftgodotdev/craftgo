@@ -11,8 +11,8 @@ type arrBoundsBasicWire struct {
 	Tags []string `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *arrBoundsBasicWire) to(dst *types.Arr_BoundsBasic) string {
 	if w.Tags == nil {
 		return "tags"
@@ -26,8 +26,8 @@ type arrTagSliceWire struct {
 	Tags []types.Tag `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *arrTagSliceWire) to(dst *types.Arr_TagSlice) string {
 	if w.Tags == nil {
 		return "tags"
@@ -41,8 +41,8 @@ type arrTag2dWire struct {
 	Grid [][]types.Tag `json:"grid"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *arrTag2dWire) to(dst *types.Arr_Tag2D) string {
 	if w.Grid == nil {
 		return "grid"
@@ -56,8 +56,8 @@ type mapKeyAndValueWire struct {
 	Index map[types.NonEmptyID]types.Email `json:"index"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mapKeyAndValueWire) to(dst *types.Map_KeyAndValue) string {
 	if w.Index == nil {
 		return "index"
@@ -71,8 +71,8 @@ type mapStructValueWire struct {
 	Users map[string]userWire `json:"users"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mapStructValueWire) to(dst *types.Map_StructValue) string {
 	if w.Users == nil {
 		return "users"
@@ -94,8 +94,8 @@ type userWire struct {
 	Email *types.Email `json:"email"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *userWire) to(dst *types.User) string {
 	if w.Name == nil {
 		return "name"
@@ -114,8 +114,8 @@ type mapArrayOfMapsWire struct {
 	Plain map[string]types.MapTag   `json:"plain"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mapArrayOfMapsWire) to(dst *types.Map_ArrayOfMaps) string {
 	if w.M == nil {
 		return "m"
@@ -134,8 +134,8 @@ type mapNestedWire struct {
 	Maa map[string][]map[string]types.DeepTag `json:"maa"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mapNestedWire) to(dst *types.Map_Nested) string {
 	if w.Mm == nil {
 		return "mm"
@@ -153,8 +153,8 @@ type mapScalarKeyWire struct {
 	ByUser map[types.MemberID]memberTagWire `json:"byUser"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mapScalarKeyWire) to(dst *types.Map_ScalarKey) string {
 	if w.ByUser == nil {
 		return "byUser"
@@ -175,8 +175,8 @@ type memberTagWire struct {
 	Name *string `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *memberTagWire) to(dst *types.MemberTag) string {
 	if w.Name == nil {
 		return "name"
@@ -191,8 +191,8 @@ type mapOptionalValueWire struct {
 	Name   *string         `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *mapOptionalValueWire) to(dst *types.Map_OptionalValue) string {
 	if w.Counts == nil {
 		return "counts"

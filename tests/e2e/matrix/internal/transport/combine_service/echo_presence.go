@@ -21,14 +21,6 @@ func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.PresenceMatrix
-		{
-			__d := "d"
-			req.DefValue = &__d
-		}
-		{
-			__d := "d"
-			req.DefNullable = &__d
-		}
 		var _b presenceMatrixWire
 		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)

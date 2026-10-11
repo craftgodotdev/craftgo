@@ -14,8 +14,8 @@ type acctCreateUserReqWire struct {
 	Meta map[string]string `json:"meta"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *acctCreateUserReqWire) to(dst *types.AcctCreateUserReq) string {
 	if w.Name == nil {
 		return "name"
@@ -41,8 +41,8 @@ type acctUpdateUserReqWire struct {
 	Meta map[string]string `json:"meta"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *acctUpdateUserReqWire) to(dst *types.AcctUpdateUserReq) string {
 	if w.Name == nil {
 		return "name"
