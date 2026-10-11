@@ -138,6 +138,9 @@ func TestNewWritesEveryLine(t *testing.T) {
 	for range n {
 		l.Error("unhandled service error")
 	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
 	raw, err := os.ReadFile(out.Name())
 	if err != nil {
 		t.Fatal(err)
