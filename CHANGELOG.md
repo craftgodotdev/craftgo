@@ -137,7 +137,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **Decode errors read the same on every Go toolchain**, the engine
   `encoding/json` runs on from Go 1.27 included, with no array index or map
-  key in a path. A value its type decodes itself fails under its JSON path:
+  key in a path, inside a `@nullable` member too, where a mixin's member keeps
+  its bare name. A value its type decodes itself fails under its JSON path:
   `at: not a valid RFC 3339 datetime`, `data: not a valid base64`, or the
   type's own text. An empty body is `body: required`.
 

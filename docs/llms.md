@@ -482,7 +482,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
-> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills an absent member at any depth. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` or defaulted member from a `null` one).
+> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills a member left out or sent as `null`, at any depth. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` member from a `null` one).
 
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |

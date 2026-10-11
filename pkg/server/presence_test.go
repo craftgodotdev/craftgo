@@ -3,6 +3,7 @@ package server
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // nullableBody is a body with a member that may be null, as a generated wire struct holds one.
@@ -44,17 +45,60 @@ func TestNullableTellsAbsentFromNull(t *testing.T) {
 	}
 }
 
-// A value of the wrong type in a Nullable is reported at the member's path, inside it too.
-func TestNullableTypeErrorNamesTheMember(t *testing.T) {
+// nullableBase is a mixin a wire struct embeds.
+type nullableBase struct {
+	N int `json:"n"`
+}
+
+// nullableMixed holds a mixin's member as its own.
+type nullableMixed struct {
+	nullableBase
+	K int `json:"k"`
+}
+
+// nullableShapes holds a Nullable around each shape a member takes.
+type nullableShapes struct {
+	nullableBody
+	E  Nullable[nullableMixed]                `json:"e"`
+	L  Nullable[[]nullableInner]              `json:"l"`
+	M  Nullable[map[string]nullableInner]     `json:"m"`
+	NN Nullable[nullableBody]                 `json:"nn"`
+	T  Nullable[time.Time]                    `json:"t"`
+	LL []Nullable[map[string][]nullableInner] `json:"ll"`
+}
+
+// A value that fails to decode in a Nullable is reported at its JSON path, by JSON names alone,
+// whatever it is held in.
+func TestNullableFailureNamesItsPath(t *testing.T) {
 	for body, want := range map[string]string{
-		`{"n":"x"}`:       `n: expected integer, got string`,
-		`{"s":{"a":"x"}}`: `s.a: expected integer, got string`,
+		`{"n":"x"}`:                  `n: expected integer, got string`,
+		`{"s":{"a":"x"}}`:            `s.a: expected integer, got string`,
+		`{"e":{"n":true,"k":1}}`:     `e.n: expected integer, got boolean`,
+		`{"l":[{"a":1},{"a":[]}]}`:   `l.a: expected integer, got array`,
+		`{"m":{"secret":{"a":"x"}}}`: `m.a: expected integer, got string`,
+		`{"nn":{"s":{"a":"x"}}}`:     `nn.s.a: expected integer, got string`,
+		`{"nn":{"n":{}}}`:            `nn.n: expected integer, got object`,
+		`{"t":"soon"}`:               `t: not a valid RFC 3339 datetime`,
+		`{"ll":[{"k":[{"a":"x"}]}]}`: `ll.a: expected integer, got string`,
 	} {
-		var b nullableBody
+		var b nullableShapes
 		err := JSON().Decode(strings.NewReader(body), &b)
 		if err == nil || err.Error() != want {
 			t.Errorf("%s: got %v, want %q", body, err, want)
 		}
+	}
+}
+
+// An unknown member inside a Nullable is named as at any other depth.
+func TestNullableUnknownMember(t *testing.T) {
+	if err := SetStrictJSON(true); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = SetStrictJSON(false) })
+	var b nullableBody
+	err := JSON().Decode(strings.NewReader(`{"s":{"a":1,"zzz":1}}`), &b)
+	if err == nil || err.Error() != "zzz: unknown field" {
+		t.Errorf("got %v, want zzz: unknown field", err)
 	}
 }
 
