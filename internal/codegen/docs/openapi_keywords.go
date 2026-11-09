@@ -193,6 +193,21 @@ func applyConstraintFamilies(ds []*ast.Decorator, s *openapi3.Schema, fams seman
 	}
 }
 
+// applyMaxSize stamps `@maxSize` as maxLength on a file's binary schema: a
+// multipart file is `type: string, format: binary`, so maxLength counts bytes.
+func applyMaxSize(ds []*ast.Decorator, s *openapi3.Schema) {
+	d := ast.FindDecorator(ds, "maxSize")
+	if d == nil || len(d.Args) == 0 {
+		return
+	}
+	bytes, ok := semantic.SizeArg(d.Args[0])
+	if !ok || bytes <= 0 {
+		return
+	}
+	v := uint64(bytes)
+	setMaxLen(s, v)
+}
+
 // hasFieldConstraintDecorator reports whether ds carries a decorator that
 // narrows a referenced type with an OpenAPI validation keyword.
 func hasFieldConstraintDecorator(ds []*ast.Decorator) bool {
