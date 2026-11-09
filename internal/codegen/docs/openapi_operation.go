@@ -326,6 +326,7 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 		ref := schemaForTypeRef(nonNullType(f.Field), pkg, registry)
 		if ref.Value != nil {
 			applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems, "file")
+			applyMaxSize(f.Field.Decorators, ref.Value)
 		}
 		props[f.WireName] = ref
 		keys[f.Field.Name] = f.WireName

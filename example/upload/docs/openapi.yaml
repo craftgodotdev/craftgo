@@ -272,6 +272,7 @@ paths:
               properties:
                 cover:
                   format: binary
+                  maxLength: 5242880
                   type: string
                 description:
                   maxLength: 2000
@@ -334,6 +335,7 @@ paths:
                   type: string
                 pdf:
                   format: binary
+                  maxLength: 52428800
                   type: string
                 title:
                   maxLength: 200
@@ -375,6 +377,7 @@ paths:
               properties:
                 blob:
                   format: binary
+                  maxLength: 512000
                   type: string
               required:
               - blob
@@ -411,6 +414,7 @@ paths:
               properties:
                 image:
                   format: binary
+                  maxLength: 5242880
                   type: string
               required:
               - image

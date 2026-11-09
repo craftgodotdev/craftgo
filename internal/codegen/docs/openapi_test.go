@@ -758,7 +758,8 @@ service S { post Make /m { request Order  response Order } }`)
 	)
 }
 
-// A file's `@mimeTypes` becomes its multipart `encoding` contentType.
+// A file's `@mimeTypes` becomes its multipart `encoding` contentType, and its
+// `@maxSize` becomes `maxLength` on the binary schema.
 func TestGenerateOpenAPIMultipartMimeTypes(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq {
@@ -776,10 +777,19 @@ service S {
 		"encoding:",
 		"avatar:",
 		"contentType: image/png, image/jpeg",
+		"maxLength: 2097152",
 	)
 	// A file without @mimeTypes gets no contentType.
 	if strings.Contains(body, "doc:\n          contentType") {
 		t.Errorf("file without @mimeTypes should not produce contentType:\n%s", body)
+	}
+	// A file without @maxSize gets no maxLength.
+	i := strings.Index(body, "doc:")
+	if i >= 0 {
+		block := body[i:min(i+80, len(body))]
+		if strings.Contains(block, "maxLength") {
+			t.Errorf("file without @maxSize should not produce maxLength:\n%s", block)
+		}
 	}
 }
 

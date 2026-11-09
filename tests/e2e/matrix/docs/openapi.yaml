@@ -10455,6 +10455,7 @@ paths:
               properties:
                 avatar_file:
                   format: binary
+                  maxLength: 5242880
                   type: string
                 note:
                   maxLength: 280
