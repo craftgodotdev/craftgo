@@ -1285,6 +1285,7 @@ paths:
               properties:
                 image:
                   format: binary
+                  maxLength: 5242880
                   type: string
               required:
               - image
