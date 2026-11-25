@@ -255,8 +255,7 @@ func appendDescription(existing, note string) string {
 	return existing + "\n\n" + note
 }
 
-// numberField returns the kin-openapi field of numeric keyword key, nil for a
-// 3.1 exclusive bound, which has none.
+// numberField returns the kin-openapi field of numeric keyword key.
 func numberField(s *openapi3.Schema, key string) **float64 {
 	switch key {
 	case "minimum":
@@ -265,6 +264,10 @@ func numberField(s *openapi3.Schema, key string) **float64 {
 		return &s.Max
 	case "multipleOf":
 		return &s.MultipleOf
+	case "exclusiveMinimum":
+		return &s.ExclusiveMin.Value
+	case "exclusiveMaximum":
+		return &s.ExclusiveMax.Value
 	}
 	return nil
 }

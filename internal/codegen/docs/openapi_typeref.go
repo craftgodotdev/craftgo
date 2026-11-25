@@ -28,13 +28,8 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 			Type:                 &openapi3.Types{"object"},
 			AdditionalProperties: openapi3.AdditionalProperties{Schema: schemaForTypeRef(t.Map.Value, pkg, registry)},
 		}
-		// kin-openapi has no `propertyNames` field; Extensions marshal as
-		// plain keywords.
 		if pn := propertyNamesForMapKey(t.Map.Key, pkg); pn != nil {
-			if s.Extensions == nil {
-				s.Extensions = make(map[string]any)
-			}
-			s.Extensions["propertyNames"] = pn
+			s.PropertyNames = &openapi3.SchemaRef{Value: pn}
 		}
 		return &openapi3.SchemaRef{Value: s}
 	}
