@@ -10,7 +10,7 @@ You describe the API once in a small DSL. `craftgo gen` writes the typed structs
 
 ## Quickstart
 
-Requires Go 1.26.9 or newer.
+Requires Go 1.26.11 or newer.
 
 ```bash
 go install github.com/craftgodotdev/craftgo/cmd/craftgo@latest

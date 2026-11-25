@@ -2842,12 +2842,12 @@ service S { post M /m { request T  response T } }`,
 	}, &config.Config{})
 	s := doc.Components.Schemas["T"].Value
 	for _, f := range []string{"a", "b"} {
-		got := s.Properties[f].Value.Extensions["exclusiveMinimum"]
-		if got != float64(5) {
+		got := s.Properties[f].Value.ExclusiveMin.Value
+		if got == nil || *got != 5 {
 			t.Errorf("field %s exclusiveMinimum = %v, want 5 (tightest)", f, got)
 		}
 	}
-	if got := s.Properties["c"].Value.Extensions["exclusiveMaximum"]; got != float64(-5) {
+	if got := s.Properties["c"].Value.ExclusiveMax.Value; got == nil || *got != -5 {
 		t.Errorf("field c exclusiveMaximum = %v, want -5 (tightest)", got)
 	}
 }
@@ -2986,7 +2986,7 @@ service S { post M /m { request R  response R } }`}, &config.Config{})
 		"e": `{"enum":["1","2"],"type":"string"}`,
 		"f": `null`,
 	} {
-		raw, err := json.Marshal(props[field].Value.Extensions["propertyNames"])
+		raw, err := json.Marshal(props[field].Value.PropertyNames)
 		if err != nil {
 			t.Fatal(err)
 		}
